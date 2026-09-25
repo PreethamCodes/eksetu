@@ -1,0 +1,18 @@
+[
+  {
+    "citizenId": "CIT-001",
+    "name": "Rahul Kumar",
+    "address": "Hyderabad, Telangana",
+    "annualIncome": 450000,
+    "verified": true,
+    "source": "Government Data Provider — Prototype"
+  },
+  {
+    "citizenId": "CIT-002",
+    "name": "Priya Sharma",
+    "address": "Bengaluru, Karnataka",
+    "annualIncome": 620000,
+    "verified": true,
+    "source": "Government Data Provider — Prototype"
+  }
+]

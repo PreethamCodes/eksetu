@@ -1,0 +1,49 @@
+[
+  {
+    "id": "income-certificate",
+    "name": "Income Certificate",
+    "status": "Available",
+    "description": "Verify income information required for an income certificate application.",
+    "buttonText": "Request Service",
+    "href": "/services/income-certificate",
+    "isAvailable": true,
+    "requiredFields": [
+      { "name": "Identity", "desc": "Citizen identity & full name verification" },
+      { "name": "Address", "desc": "Current residential address" },
+      { "name": "Annual Income", "desc": "Annual household earnings assessment" }
+    ],
+    "purpose": "Income Certificate Application",
+    "dataProvider": "Government Data Provider — Prototype"
+  },
+  {
+    "id": "scholarship-application",
+    "name": "Scholarship Application",
+    "status": "Coming Soon",
+    "description": "Verify citizen information required for scholarship eligibility.",
+    "buttonText": "Coming Soon",
+    "href": "#",
+    "isAvailable": false,
+    "requiredFields": [
+      { "name": "Academic Record", "desc": "Enrollment and examination records" },
+      { "name": "Caste / Category", "desc": "Category verification (if applicable)" },
+      { "name": "Income Record", "desc": "Family income certificate" }
+    ],
+    "purpose": "Scholarship Eligibility Verification",
+    "dataProvider": "Education Department & Welfare Provider"
+  },
+  {
+    "id": "student-verification",
+    "name": "Student Verification",
+    "status": "Coming Soon",
+    "description": "Verify educational information from connected services.",
+    "buttonText": "Coming Soon",
+    "href": "#",
+    "isAvailable": false,
+    "requiredFields": [
+      { "name": "Student Identity", "desc": "Student ID & University Enrollment" },
+      { "name": "Institution Details", "desc": "Accredited educational institution confirmation" }
+    ],
+    "purpose": "Student Status Confirmation",
+    "dataProvider": "Higher Education Board — Prototype"
+  }
+]
