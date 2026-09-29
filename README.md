@@ -1,298 +1,304 @@
-# EkSetu — Government Interoperability Platform
+# EKSetu — Government Interoperability Platform (V1 Prototype)
 
-> **EkSetu V1 is a prototype demonstrating consent-based interoperability between government services using simulated provider APIs. It does not access real government systems or real citizen data.**
-
----
-
-## 1. Overview
-
-**EkSetu** is an interoperability layer designed for government public service delivery.
-
-* **Primary Application Title**: EkSetu
-* **Tagline**: One Platform. Connected Services.
-* **Supporting Description**: Connecting government services through secure, consent-based data exchange.
-* **Release Version**: Prototype V1.0 (Smart India Hackathon Prototype)
+> **“Share Proof, Not Databases.”**  
+> EKSetu is a consent- and policy-driven interoperability fabric that enables authorized government services to securely obtain only the verified information they need from existing departmental systems, without centralizing or duplicating citizen databases.
 
 ---
 
-## 2. Problem Being Addressed
-
-In traditional government service delivery, citizens are forced to repeatedly submit the exact same documents (income certificates, educational credentials, caste certificates, address proofs) to different departments. 
-
-* **Citizen burden**: Long physical queues, duplicate paperwork, delayed processing.
-* **Administrative overhead**: Manual physical verification of documents across departments.
-* **Data silos**: Departments cannot communicate securely with other official data custodians.
-
-### EkSetu Core Solution:
-Citizens should not have to repeatedly submit the same information to different government services. **EkSetu acts as an interoperability layer that allows one service to securely request verified information from another connected service/provider, strictly based on citizen consent.**
-
----
-
-## 3. V1 Objective
-
-Demonstrate one complete, working, end-to-end interoperability flow through actual API calls:
+## 1. System Architecture
 
 ```text
-Citizen
-   ↓
-EkSetu Gateway
-   ↓
-Select Government Service (Income Certificate)
-   ↓
-Service Requirements Disclosure
-   ↓
-Citizen Consent (Explicit Review & Approval)
-   ↓
-EkSetu API Layer
-   ↓
-Mock Government Data Provider
-   ↓
-Data Verification
-   ↓
-EkSetu Gateway
-   ↓
-Citizen Result (Verified Data & Audit Log)
+CITIZEN
+   │
+   ▼
+Scholarship Portal (Government Service)
+   │
+   │  "Verify Automatically with EKSetu"
+   ▼
+EKSetu Gateway (/api/v1/requests)
+   │
+   ├── Education Department API (/api/mock/education)
+   ├── Revenue Department API   (/api/mock/revenue)
+   └── Residence Department API (/api/mock/residence)
+   │
+   ▼
+Aggregated Verified Proof & Provenance
+   │
+   ▼
+Scholarship Portal Result Screen (✓ Verified)
 ```
 
+### Key Architectural Principles
+1. **Existing Government Services remain citizen-facing**: Citizens do not have to leave their portal to manage separate logins.
+2. **EKSetu is the interoperability layer, not a destination database**: Departmental source registries remain authoritative.
+3. **Attribute-level verification & data minimization**: Services receive only verified proof (e.g. `qualification: "Bachelor's Degree"`), not entire citizen dossiers.
+4. **End-to-end traceability**: Every transaction generates a unique `Request ID` and an auditable execution trace.
+
 ---
 
-## 4. Architecture & Data Flow
+## 2. Project Structure
 
 ```text
-                  EkSetu
-                    │
-          ┌─────────┴─────────┐
-          │                   │
-    Service Layer      Interoperability Layer
-                              │
-                              ↓
-                        Provider API
-```
-
-* **Frontend**: Next.js App Router UI providing clean GovTech user experiences.
-* **EkSetu API Layer**: Orchestrates requests (`/api/request`), records citizen consent (`/api/consent`), and conducts integrity verification (`/api/verify`).
-* **Provider Layer**: Decoupled mock provider simulating departmental custodian backends (`/api/provider/income/[citizenId]`).
-
-The frontend **never** queries the data provider directly. All data access occurs through the EkSetu interoperability contract.
-
----
-
-## 5. Technology Stack
-
-* **Framework**: Next.js 14+ (App Router)
-* **Language**: TypeScript
-* **Styling**: Tailwind CSS
-* **Icons**: Lucide React
-* **State & Data**: In-Memory Request Store + Local Structured JSON
-* **Runtime / Deployment**: Node.js & Vercel serverless compatible
-
----
-
-## 6. Project Structure
-
-```text
-eksetu/
-├── app/
-│   ├── layout.tsx                              # Root layout with GovTech theme
-│   ├── globals.css                             # Tailwind directives
-│   ├── page.tsx                                # Landing page with hero & 4 capability cards
-│   ├── about/
-│   │   └── page.tsx                            # Mission, SIH context, and V1 scope
-│   ├── services/
-│   │   ├── page.tsx                            # Catalog of services (1 Active, 2 Coming Soon)
-│   │   └── income-certificate/
-│   │       ├── page.tsx                        # Requirements disclosure & request creation
-│   │       └── consent/
-│   │           └── page.tsx                    # Citizen consent screen & API submission
-│   ├── result/
-│   │   └── [requestId]/
-│   │       └── page.tsx                        # Verified data card & technical flow diagram
-│   └── api/
-│       ├── request/
-│       │   ├── route.ts                        # POST /api/request
-│       │   └── [requestId]/route.ts            # GET /api/request/[requestId]
-│       ├── consent/
-│       │   └── route.ts                        # POST /api/consent
-│       ├── provider/
-│       │   └── income/
-│       │       └── [citizenId]/route.ts        # GET /api/provider/income/[citizenId]
-│       └── verify/
-│           └── route.ts                        # POST /api/verify
-├── components/
-│   ├── Header.tsx                              # Responsive GovTech header
-│   ├── Footer.tsx                              # Prototype disclaimers
-│   ├── ServiceCard.tsx                         # Service catalog card
-│   ├── TechnicalFlow.tsx                       # Step-by-step interoperability diagram
-│   └── LoadingOverlay.tsx                      # Professional transition spinner
-├── data/
-│   ├── services.json                           # Service definitions
-│   └── citizens.json                           # Mock departmental citizen records
-├── lib/
-│   ├── types.ts                                # Core TypeScript data contracts
-│   ├── requestStore.ts                         # In-memory ticket cache with resilient fallback
-│   ├── dataProvider.ts                         # Decoupled DataProvider adapter interface
-│   └── verification.ts                         # Business validation & audit logging
+EKSetu/
+├── backend/
+│   ├── src/
+│   │   ├── controllers/
+│   │   │   ├── requestController.ts        # /api/v1/requests & /api/health
+│   │   │   └── mockDepartmentController.ts # /api/mock/{education,revenue,residence}
+│   │   ├── routes/
+│   │   │   ├── apiRoutes.ts                # Gateway API routes
+│   │   │   └── mockRoutes.ts               # Department simulation routes
+│   │   ├── services/
+│   │   │   ├── interoperabilityService.ts  # Gateway orchestration & aggregation
+│   │   │   └── databaseService.ts          # Supabase & in-memory persistence
+│   │   ├── providers/
+│   │   │   ├── educationProvider.ts        # Higher Education registry adapter
+│   │   │   ├── revenueProvider.ts          # Revenue / Income certificate adapter
+│   │   │   └── residenceProvider.ts        # Domicile / Residence registry adapter
+│   │   ├── models/
+│   │   │   └── types.ts                    # Strongly typed contracts
+│   │   ├── middleware/
+│   │   │   ├── errorHandler.ts             # Centralized error handler
+│   │   │   └── validateRequest.ts          # Zod schema validation
+│   │   ├── utils/
+│   │   │   ├── requestIdGenerator.ts       # REQ-YYYYMMDD-XXXXX generator
+│   │   │   └── supabaseClient.ts           # Supabase client with graceful fallback
+│   │   ├── database/
+│   │   │   └── schema.sql                  # PostgreSQL / Supabase table definitions
+│   │   └── server.ts                       # Express gateway entry point
+│   ├── .env.example
+│   ├── package.json
+│   └── tsconfig.json
+│
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── Header.tsx                  # Government banner & health status
+│   │   │   ├── Footer.tsx                  # Disclaimer & architecture tags
+│   │   │   ├── StatusBadge.tsx             # VERIFIED / PARTIAL / FAILED badges
+│   │   │   ├── VerificationProgress.tsx    # Multi-department orchestration stepper
+│   │   │   ├── DepartmentResultCard.tsx    # Source attribution & attribute cards
+│   │   │   └── RequestTrace.tsx            # Expandable sequence flow trace
+│   │   ├── pages/
+│   │   │   ├── LandingPage.tsx             # Platform overview & flow diagram
+│   │   │   └── ScholarshipPage.tsx         # Scholarship form & verification UX
+│   │   ├── services/
+│   │   │   └── api.ts                      # Client API caller
+│   │   ├── types/
+│   │   │   └── index.ts                    # UI TypeScript types
+│   │   ├── App.tsx                         # Root app component
+│   │   ├── main.tsx                        # Entry point
+│   │   └── index.css                       # Tailwind styles
+│   ├── .env.example
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── tailwind.config.js
+│
 └── README.md
 ```
 
 ---
 
-## 7. API Endpoints
+## 3. API Documentation
 
-### 1. Initiate Service Request
-- **Endpoint**: `POST /api/request`
-- **Request Body**:
-  ```json
-  {
-    "service": "income-certificate",
-    "citizenId": "CIT-001",
-    "purpose": "Income Certificate Application"
-  }
-  ```
-- **Response**:
-  ```json
-  {
-    "requestId": "EK-2026-00001",
-    "status": "PENDING"
-  }
-  ```
+### 3.1 Gateway Health Check
+* **Endpoint**: `GET /api/health`
+* **Response**:
+```json
+{
+  "status": "ok",
+  "service": "EKSetu API",
+  "version": "1.0.0"
+}
+```
 
-### 2. Record Citizen Consent
-- **Endpoint**: `POST /api/consent`
-- **Request Body**:
-  ```json
-  {
-    "requestId": "EK-2026-00001",
-    "consent": true
-  }
-  ```
-- **Response**:
-  ```json
-  {
-    "requestId": "EK-2026-00001",
-    "consent": "GRANTED",
-    "status": "APPROVED"
-  }
-  ```
-
-### 3. Query Mock Government Data Provider
-- **Endpoint**: `GET /api/provider/income/CIT-001`
-- **Response**:
-  ```json
-  {
-    "citizenId": "CIT-001",
-    "name": "Rahul Kumar",
-    "address": "Hyderabad, Telangana",
-    "annualIncome": 450000,
-    "verified": true,
-    "source": "Government Data Provider — Prototype"
-  }
-  ```
-
-### 4. Verify Request & Fetch Data
-- **Endpoint**: `POST /api/verify`
-- **Request Body**:
-  ```json
-  {
-    "requestId": "EK-2026-00001"
-  }
-  ```
-- **Response**:
-  ```json
-  {
-    "requestId": "EK-2026-00001",
-    "status": "VERIFIED",
-    "data": {
-      "name": "Rahul Kumar",
-      "address": "Hyderabad, Telangana",
-      "annualIncome": 450000
+### 3.2 Primary Verification Gateway
+* **Endpoint**: `POST /api/v1/requests`
+* **Request Body**:
+```json
+{
+  "service": "SCHOLARSHIP",
+  "applicant": {
+    "applicationId": "SCH-2026-001",
+    "name": "Sai Preetham",
+    "dob": "2003-05-14",
+    "qualification": "Bachelor's Degree",
+    "annualIncome": 180000,
+    "residenceState": "Telangana"
+  },
+  "requestedData": [
+    "education",
+    "income",
+    "residence"
+  ]
+}
+```
+* **Response**:
+```json
+{
+  "requestId": "REQ-20260929-8F42A",
+  "service": "SCHOLARSHIP",
+  "status": "VERIFIED",
+  "applicant": {
+    "applicationId": "SCH-2026-001",
+    "name": "Sai Preetham"
+  },
+  "verifiedData": {
+    "education": {
+      "qualification": "Bachelor's Degree",
+      "studentStatus": "GRADUATE",
+      "status": "VERIFIED"
     },
-    "source": "Government Data Provider — Prototype",
-    "technicalDetails": {
-      "requestId": "EK-2026-00001",
-      "service": "income-certificate",
-      "consent": "GRANTED",
-      "provider": "Government Data Provider — Prototype",
-      "verification": "SUCCESS",
-      "responseStatus": 200
+    "income": {
+      "annualIncome": 180000,
+      "incomeStatus": "VALID",
+      "status": "VERIFIED"
+    },
+    "residence": {
+      "state": "Telangana",
+      "residenceStatus": "VALID",
+      "status": "VERIFIED"
     }
-  }
-  ```
+  },
+  "sources": [
+    { "department": "Education Department", "status": "VERIFIED", "verifiedAt": "2026-09-29T17:42:00.000Z" },
+    { "department": "Revenue Department", "status": "VERIFIED", "verifiedAt": "2026-09-29T17:42:00.050Z" },
+    { "department": "Residence Department", "status": "VERIFIED", "verifiedAt": "2026-09-29T17:42:00.100Z" }
+  ],
+  "trace": [
+    { "step": "REQUEST_CREATED", "message": "Verification request initiated...", "status": "SUCCESS", "timestamp": "..." },
+    { "step": "EDUCATION_DEPARTMENT_VERIFIED", "message": "Education Department API contacted...", "status": "SUCCESS", "timestamp": "..." },
+    { "step": "REVENUE_DEPARTMENT_VERIFIED", "message": "Revenue Department API contacted...", "status": "SUCCESS", "timestamp": "..." },
+    { "step": "RESIDENCE_DEPARTMENT_VERIFIED", "message": "Residence Department API contacted...", "status": "SUCCESS", "timestamp": "..." },
+    { "step": "DATA_AGGREGATED", "message": "Aggregated data from 3 department sources", "status": "SUCCESS", "timestamp": "..." },
+    { "step": "VERIFICATION_COMPLETE", "message": "EKSetu interoperability orchestration complete.", "status": "SUCCESS", "timestamp": "..." }
+  ],
+  "timestamp": "2026-09-29T17:42:00.120Z"
+}
+```
+
+### 3.3 Mock Department Endpoints
+* **Education**: `POST /api/mock/education` or `GET /api/mock/education`
+* **Revenue**: `POST /api/mock/revenue` or `GET /api/mock/revenue`
+* **Residence**: `POST /api/mock/residence` or `GET /api/mock/residence`
 
 ---
 
-## 8. Local Setup & Running Locally
+## 4. Database Schema (Supabase / PostgreSQL)
 
-### Prerequisites
-* Node.js v18.17+ or v20+
-* npm v9+
+Run the script in `backend/src/database/schema.sql` on Supabase:
 
-### Installation
-```bash
-git clone https://github.com/your-username/eksetu.git
-cd eksetu
-npm install
+```sql
+CREATE TABLE IF NOT EXISTS verification_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_id VARCHAR(64) UNIQUE NOT NULL,
+    service VARCHAR(64) NOT NULL,
+    applicant_data JSONB NOT NULL,
+    requested_data TEXT[] NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS verification_results (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_id VARCHAR(64) NOT NULL REFERENCES verification_requests(request_id) ON DELETE CASCADE,
+    provider VARCHAR(64) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    data JSONB NOT NULL,
+    verified_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
 ```
 
-### Run Development Server
+*Note: The backend has an automatic in-memory persistence fallback so local development and unit testing operate seamlessly even without active Supabase credentials.*
+
+---
+
+## 5. Environment Variables
+
+### Backend (`backend/.env`)
 ```bash
+PORT=5000
+NODE_ENV=development
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
+
+### Frontend (`frontend/.env`)
+```bash
+VITE_API_BASE_URL=http://localhost:5000
+```
+
+---
+
+## 6. How to Run Locally
+
+### Step 1: Start Backend
+```bash
+cd backend
+npm install
 npm run dev
 ```
+Backend runs at `http://localhost:5000`.
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-### Run Production Build
+### Step 2: Start Frontend
 ```bash
-npm run build
-npm start
+cd frontend
+npm install
+npm run dev
 ```
+Frontend runs at `http://localhost:3000`.
 
 ---
 
-## 9. Deployment to Vercel
+## 7. Deployment Instructions
 
-EkSetu is designed for zero-config deployment to Vercel:
+### Deploying Backend to Railway
+1. Push the repository to GitHub.
+2. In Railway, click **New Project** → **Deploy from GitHub repo**.
+3. Set the Root Directory to `/backend`.
+4. Configure Environment Variables:
+   - `PORT=5000`
+   - `SUPABASE_URL=<your-supabase-url>`
+   - `SUPABASE_SERVICE_ROLE_KEY=<your-supabase-key>`
+5. Deploy and copy your Railway URL (e.g. `https://eksetu-api.up.railway.app`).
 
-1. Push your repository to GitHub:
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit: EkSetu V1 Foundation Prototype"
-   git remote add origin https://github.com/<your-username>/EkSetu.git
-   git push -u origin main
-   ```
-2. Log into [vercel.com](https://vercel.com).
-3. Click **Add New Project** and select the **EkSetu** repository.
-4. Leave standard settings (Framework: Next.js) and click **Deploy**.
-5. Once deployed, you receive your permanent live demo URL:
-   `https://eksetu.vercel.app` (or custom subdomain).
+### Deploying Frontend to Vercel
+1. In Vercel, click **Add New** → **Project** → select the GitHub repository.
+2. Set Root Directory to `frontend`.
+3. Framework Preset: **Vite**.
+4. Configure Environment Variable:
+   - `VITE_API_BASE_URL=https://eksetu-api.up.railway.app`
+5. Click **Deploy**.
 
 ---
 
-## 10. Future Roadmap
+## 8. Exact Steps to Test the Complete V1 Flow
 
-### V1 — Foundation (Current)
-- EkSetu Service Catalog
-- Explicit Citizen Consent Flow
-- Interoperability API Layer
-- Mock Provider Abstraction
-- Verified Data Exchange
-
-### V2 — Real Integrations
-- Citizen Authentication (OAuth 2.0 / OIDC)
-- PostgreSQL persistent audit trails
-- Real integration with National API Setu
-- DigiLocker document exchange integration
-- Live State Department APIs
-
-### V3 — National Scale
-- Multi-Department routing
-- Dynamic Service Discovery & registry
-- Granular data minimization policy engine
-- Tamper-proof audit logs
-- Inter-agency monitoring & SLA analytics
-
-### V4 — Intelligence
-- Citizen conversational discovery interface
-- Predictive scheme eligibility mapping
-- Seamless multi-benefit packaging
+1. Open `http://localhost:3000` (or deployed URL).
+2. Click **Try Scholarship Verification** to navigate to `/scholarship`.
+3. Check the pre-filled applicant details:
+   - Full Name: `Sai Preetham`
+   - Application ID: `SCH-2026-001`
+   - Education Qualification: `Bachelor's Degree`
+   - Annual Income: `180000`
+   - Residence State: `Telangana`
+4. Click the prominent button: **Verify Automatically with EKSetu**.
+5. Observe the live orchestration progress:
+   - *✓ Request created*
+   - *✓ Education Department contacted*
+   - *✓ Revenue Department contacted*
+   - *✓ Residence Department contacted*
+   - *✓ Data aggregated*
+   - *✓ Verification complete*
+6. Review the verification outcome:
+   - Request ID generated (e.g. `REQ-20260929-8F42A`)
+   - Overall Status: `✓ VERIFIED`
+   - 3 Department Cards clearly showing source provenance:
+     - Education Department (Qualification: Bachelor's Degree, Status: ✓ Verified)
+     - Revenue Department (Annual Income: ₹1,80,000, Status: ✓ Verified)
+     - Residence Department (State: Telangana, Status: ✓ Verified)
+7. Click **View Request Details** to expand and review the internal interoperability sequence trace.
+8. (Optional Demonstration): Switch scenario dropdown to **Simulate Revenue Department Failure** and click verify to showcase `PARTIAL_VERIFIED` handling.
