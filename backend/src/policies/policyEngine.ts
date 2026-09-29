@@ -82,12 +82,26 @@ export class PolicyEngine {
           explanation: `Required for ${policy.purpose.replace(/_/g, ' ')} verification`
         });
       } else {
-        // Determine whether field is known extraneous field or completely unknown
-        const isKnownBlocked = policy.blockedFieldsKnown.includes(normalizedField);
-        const reason = isKnownBlocked ? 'NOT_REQUIRED_FOR_PURPOSE' : 'UNKNOWN_FIELD';
-        const explanation = isKnownBlocked
-          ? `Field '${field}' is not required for ${policy.purpose.replace(/_/g, ' ')} and is blocked by data minimization policy`
-          : `Field '${field}' is unrecognized by policy engine and defaults to deny`;
+        // Determine specific data minimization justification reason
+        let reason: any = 'NOT_REQUIRED_FOR_PURPOSE';
+        let explanation = `Field '${field}' is not required for scholarship eligibility assessment`;
+
+        if (normalizedField.includes('bank') || normalizedField.includes('balance')) {
+          reason = 'EXCESSIVE_DATA';
+          explanation = 'Excessive financial disclosure; annual income bracket is sufficient';
+        } else if (normalizedField.includes('address')) {
+          reason = 'NOT_REQUIRED_FOR_PURPOSE';
+          explanation = 'Full street address not required for scholarship eligibility; domicile state is sufficient';
+        } else if (normalizedField.includes('caste') || normalizedField.includes('religion')) {
+          reason = 'SENSITIVE_DATA_RESTRICTED';
+          explanation = 'Sensitive personal classification restricted from automated exchange';
+        } else if (normalizedField.includes('medical') || normalizedField.includes('health')) {
+          reason = 'NOT_REQUIRED_FOR_PURPOSE';
+          explanation = 'Medical history is not required for academic scholarship eligibility assessment';
+        } else if (!policy.blockedFieldsKnown.includes(normalizedField)) {
+          reason = 'UNKNOWN_FIELD';
+          explanation = `Field '${field}' is unrecognized by policy engine and defaults to deny`;
+        }
 
         blockedFields.push({
           field,

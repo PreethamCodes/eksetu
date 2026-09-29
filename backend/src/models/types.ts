@@ -5,9 +5,11 @@ export type VerificationStatus =
   | 'AUTHORIZED'
   | 'CONSENT_DENIED'
   | 'REQUEST_DENIED'
+  | 'AUTHORIZATION_FAILED'
   | 'POLICY_DENIED'
   | 'VERIFIED'
   | 'PARTIAL_VERIFIED'
+  | 'VERIFICATION_FAILED'
   | 'FAILED';
 
 export type ConsentDecision = 'PENDING' | 'GRANTED' | 'DENIED';
@@ -18,6 +20,7 @@ export interface ApplicantInfo {
   name: string;
   dob?: string;
   qualification?: string;
+  marksPercentage?: number;
   annualIncome?: number;
   residenceState?: string;
 }
@@ -114,26 +117,34 @@ export interface AggregatedVerificationResult {
   requestId: string;
   service: string;
   status: VerificationStatus;
+  purpose?: string;
   consentStatus: ConsentDecision;
   authorizationStatus: 'AUTHORIZED' | 'NOT_AUTHORIZED';
   dataReleased: boolean;
+  data?: Record<string, any>;
   policy?: PolicyEvaluationResult;
   consent?: ConsentRecord;
   applicant?: ApplicantInfo;
   verifiedData?: {
     education?: {
+      studentName?: string;
       qualification: string;
+      marksPercentage?: number;
       studentStatus?: string;
+      verified?: boolean;
       status: 'VERIFIED' | 'FAILED';
     };
     income?: {
       annualIncome: number;
       incomeStatus?: string;
+      verified?: boolean;
       status: 'VERIFIED' | 'FAILED';
     };
     residence?: {
+      domicileState?: string;
       state: string;
       residenceStatus?: string;
+      verified?: boolean;
       status: 'VERIFIED' | 'FAILED';
     };
   };

@@ -80,7 +80,7 @@ export const DepartmentResultCard: React.FC<DepartmentResultCardProps> = ({
         )}
       </div>
 
-      {/* Provenance & Source Department */}
+      {/* Authoritative Source Department */}
       <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-1.5 bg-slate-50 -mx-5 -mb-5 px-5 py-3 rounded-b-xl">
         <div className="flex items-center space-x-1.5">
           <span className="text-slate-500 font-medium">Source:</span>

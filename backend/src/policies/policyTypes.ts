@@ -7,10 +7,17 @@ export type DataClassification =
   | 'FINANCIAL'
   | 'MEDICAL'
   | 'VEHICLE'
+  | 'PII'
+  | 'ACADEMIC'
+  | 'DEMOGRAPHIC'
+  | 'HIGHLY_CONFIDENTIAL'
+  | 'SENSITIVE_PERSONAL'
   | 'GENERAL';
 
 export type BlockedReason =
   | 'NOT_REQUIRED_FOR_PURPOSE'
+  | 'EXCESSIVE_DATA'
+  | 'SENSITIVE_DATA_RESTRICTED'
   | 'PURPOSE_NOT_AUTHORIZED'
   | 'FIELD_NOT_ALLOWED'
   | 'UNKNOWN_FIELD';

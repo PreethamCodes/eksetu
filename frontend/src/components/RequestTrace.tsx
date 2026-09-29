@@ -19,14 +19,14 @@ export const RequestTrace: React.FC<RequestTraceProps> = ({ trace, requestId }) 
         <div className="flex items-center space-x-2.5">
           <GitCommit className="w-4 h-4 text-sky-700" />
           <span className="text-sm font-bold text-[#0F2642]">
-            View Request Details (Interoperability Trace)
+            View Request Processing Steps (Timestamped Trace)
           </span>
           <span className="text-xs bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-mono">
             {requestId}
           </span>
         </div>
         <div className="flex items-center space-x-1 text-xs text-sky-800 font-semibold">
-          <span>{isOpen ? 'Hide Trace' : 'Expand Flow'}</span>
+          <span>{isOpen ? 'Hide Steps' : 'View Steps'}</span>
           {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </div>
       </button>
@@ -34,7 +34,7 @@ export const RequestTrace: React.FC<RequestTraceProps> = ({ trace, requestId }) 
       {isOpen && (
         <div className="p-5 sm:p-6 bg-white border-t border-slate-200">
           <p className="text-xs text-slate-500 mb-4">
-            Deterministic sequence trace executed by EKSetu Gateway across independent department boundaries:
+            Sequential processing steps executed by EKSetu Gateway across department boundaries. <em>(Note: Lightweight execution trace; full tamper-evident cryptographic provenance is reserved for V4).</em>
           </p>
 
           <div className="relative border-l-2 border-sky-200 ml-4 pl-6 space-y-5">

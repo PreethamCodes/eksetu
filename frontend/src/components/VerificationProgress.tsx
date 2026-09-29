@@ -6,14 +6,14 @@ interface VerificationProgressProps {
 }
 
 const STEPS = [
-  { id: 1, label: 'Request created', desc: 'Unique Request ID generated & logged' },
-  { id: 2, label: 'Citizen consent verified', desc: 'One-time explicit citizen authorization confirmed' },
-  { id: 3, label: 'Service authorization verified', desc: 'Scholarship Service authorized for requested scopes' },
-  { id: 4, label: 'Education Department contacted', desc: 'Checking academic qualifications registry' },
-  { id: 5, label: 'Revenue Department contacted', desc: 'Validating annual income certificate status' },
-  { id: 6, label: 'Residence Department contacted', desc: 'Verifying state domicile registry' },
-  { id: 7, label: 'Data aggregated', desc: 'Harmonizing schemas and minimizing payload' },
-  { id: 8, label: 'Verification complete', desc: 'Assembling verified proof for portal' }
+  { id: 1, label: 'Consent recorded', desc: 'Citizen granted permission to proceed with verification request' },
+  { id: 2, label: 'Authorization checked', desc: 'Scholarship service verified as trusted requesting entity' },
+  { id: 3, label: 'Policy evaluated', desc: 'Policy engine evaluated allowed and blocked fields for purpose' },
+  { id: 4, label: 'Education verification', desc: 'Education Department querying authoritative academic records' },
+  { id: 5, label: 'Revenue verification', desc: 'Revenue Department querying authoritative income records' },
+  { id: 6, label: 'Residence verification', desc: 'Residence Department querying authoritative domicile records' },
+  { id: 7, label: 'Minimizing data', desc: 'Stripping unapproved and extraneous fields from department responses' },
+  { id: 8, label: 'Preparing result', desc: 'Aggregating verified department results for scholarship portal' }
 ];
 
 export const VerificationProgress: React.FC<VerificationProgressProps> = ({ onComplete }) => {
@@ -43,10 +43,10 @@ export const VerificationProgress: React.FC<VerificationProgressProps> = ({ onCo
         </div>
         <div>
           <h3 className="text-base font-bold text-[#0F2642]">
-            Consent Verified — Connecting to government data sources...
+            Consent Recorded — Department Verification in Progress...
           </h3>
           <p className="text-xs text-slate-500">
-            EKSetu Interoperability Layer is orchestrating authorized department calls
+            EKSetu is requesting authoritative department records under policy governance
           </p>
         </div>
       </div>

@@ -33,6 +33,7 @@ const DEFAULT_FORM: ApplicantFormData = {
   name: 'Sai Preetham',
   dob: '2003-05-14',
   qualification: "Bachelor's Degree",
+  marksPercentage: 82,
   annualIncome: 180000,
   residenceState: 'Telangana'
 };
@@ -41,7 +42,8 @@ type DemoScenario =
   | 'data_minimization'
   | 'standard'
   | 'blocked_only'
-  | 'revenue_failure';
+  | 'revenue_failure'
+  | 'education_failure';
 
 export const ScholarshipPage: React.FC = () => {
   const [formData, setFormData] = useState<ApplicantFormData>(DEFAULT_FORM);
@@ -57,7 +59,7 @@ export const ScholarshipPage: React.FC = () => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: name === 'annualIncome' ? (value ? Number(value) : 0) : value
+      [name]: (name === 'annualIncome' || name === 'marksPercentage') ? (value ? Number(value) : 0) : value
     }));
   };
 
@@ -71,34 +73,40 @@ export const ScholarshipPage: React.FC = () => {
 
     try {
       let requestedData = [
-        'education.qualification',
-        'income.annual_income',
-        'residence.state'
+        'studentName',
+        'marksPercentage',
+        'annualIncome',
+        'domicileState'
       ];
 
       if (selectedScenario === 'data_minimization') {
-        // V3 Primary Showcase: Request 5 fields (including 2 extraneous sensitive fields)
+        // V3 Primary Showcase: Request 6 fields (including 2 extraneous sensitive fields)
         requestedData = [
-          'education.qualification',
-          'income.annual_income',
-          'residence.state',
-          'bank.balance',
-          'medical.history'
+          'studentName',
+          'marksPercentage',
+          'annualIncome',
+          'domicileState',
+          'bankBalance',
+          'fullAddress'
         ];
       } else if (selectedScenario === 'blocked_only') {
-        // Test 3: Request ONLY blocked fields
-        requestedData = ['bank.balance', 'medical.history'];
+        // Test 4: Request ONLY blocked fields
+        requestedData = ['bankBalance', 'fullAddress'];
       }
+
+      const simulateFailure =
+        selectedScenario === 'revenue_failure'
+          ? { department: 'revenue' as const, reason: 'Simulated department registry outage / expired certificate demo' }
+          : selectedScenario === 'education_failure'
+          ? { department: 'education' as const, reason: 'Candidate academic record not found in Education database' }
+          : undefined;
 
       const payload = {
         service: 'SCHOLARSHIP',
         applicant: formData,
         requestedData,
         purpose: 'Scholarship Eligibility',
-        simulateFailure: selectedScenario === 'revenue_failure' ? {
-          department: 'revenue' as const,
-          reason: 'Simulated department registry outage / expired certificate demo'
-        } : undefined
+        simulateFailure
       };
 
       const pendingRes = await initiateVerification(payload);
@@ -215,16 +223,19 @@ export const ScholarshipPage: React.FC = () => {
               className="bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-60"
             >
               <option value="data_minimization">
-                Data Minimization Demo (5 Requested → 3 Allowed, 2 Blocked by Policy)
+                Data Minimization Demo (6 Requested → 4 Allowed, 2 Blocked by Policy)
               </option>
               <option value="standard">
-                Standard Verification (3 Required Fields → Full ALLOW)
+                Standard Verification (4 Required Fields → Full ALLOW)
               </option>
               <option value="blocked_only">
-                Only Blocked Fields Demo (Bank Balance & Medical → POLICY_DENIED)
+                Only Blocked Fields Demo (Bank Balance & Full Address → POLICY_DENIED)
               </option>
               <option value="revenue_failure">
-                Simulate Revenue Registry Failure (Partial Provider Verification)
+                Simulate Revenue Registry Failure (Revenue = FAILED, Overall = PARTIAL_VERIFIED)
+              </option>
+              <option value="education_failure">
+                Simulate Education Registry Failure (Education = FAILED, Overall = PARTIAL_VERIFIED)
               </option>
             </select>
           </div>
@@ -559,11 +570,17 @@ export const ScholarshipPage: React.FC = () => {
               <div>
                 <div className="flex items-center space-x-2 mb-1">
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                    Orchestrated Verification Outcome
+                    {verificationResult.status === 'PARTIAL_VERIFIED'
+                      ? 'Incomplete Department Outcome'
+                      : 'Orchestrated Verification Outcome'}
                   </span>
                 </div>
                 <h3 className="text-2xl font-black text-[#0F2642]">
-                  Verification Complete
+                  {verificationResult.status === 'PARTIAL_VERIFIED'
+                    ? 'Partial Verification (Some Departments Incomplete)'
+                    : verificationResult.status === 'VERIFICATION_FAILED'
+                    ? 'Department Verification Failed'
+                    : 'Verification Complete'}
                 </h3>
                 <div className="flex items-center space-x-3 mt-2 text-xs text-slate-600">
                   <span>Applicant: <strong className="text-slate-800">{verificationResult.applicant?.name || formData.name}</strong></span>
@@ -588,10 +605,153 @@ export const ScholarshipPage: React.FC = () => {
               </div>
             )}
 
+            {/* Section 13: Accurate Verification Result & Data Breakdown */}
+            <div className="mt-6 bg-slate-50 border border-slate-200 rounded-xl p-5 sm:p-6">
+              <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-200">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                  Verification Result & Data Minimization Summary
+                </h4>
+                <span className="text-[11px] text-slate-500 font-medium">
+                  Authoritative Department APIs
+                </span>
+              </div>
+
+              {/* Department Verification Status Checklist */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                {/* Education */}
+                <div className={`flex items-center space-x-2.5 p-3 rounded-lg border bg-white ${
+                  verificationResult.sources?.find(s => s.department === 'Education Department')?.status === 'VERIFIED'
+                    ? 'border-emerald-200'
+                    : 'border-rose-200 bg-rose-50/20'
+                }`}>
+                  {verificationResult.sources?.find(s => s.department === 'Education Department')?.status === 'VERIFIED' ? (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                  ) : (
+                    <XCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
+                  )}
+                  <div>
+                    <span className="text-xs font-bold text-slate-900 block">Education Department</span>
+                    <span className={`text-[11px] font-semibold ${
+                      verificationResult.sources?.find(s => s.department === 'Education Department')?.status === 'VERIFIED'
+                        ? 'text-emerald-700'
+                        : 'text-rose-700'
+                    }`}>
+                      {verificationResult.sources?.find(s => s.department === 'Education Department')?.status === 'VERIFIED'
+                        ? '✓ Education verified'
+                        : '✗ Education unverified'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Revenue */}
+                <div className={`flex items-center space-x-2.5 p-3 rounded-lg border bg-white ${
+                  verificationResult.sources?.find(s => s.department === 'Revenue Department')?.status === 'VERIFIED'
+                    ? 'border-emerald-200'
+                    : 'border-rose-200 bg-rose-50/20'
+                }`}>
+                  {verificationResult.sources?.find(s => s.department === 'Revenue Department')?.status === 'VERIFIED' ? (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                  ) : (
+                    <XCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
+                  )}
+                  <div>
+                    <span className="text-xs font-bold text-slate-900 block">Revenue Department</span>
+                    <span className={`text-[11px] font-semibold ${
+                      verificationResult.sources?.find(s => s.department === 'Revenue Department')?.status === 'VERIFIED'
+                        ? 'text-emerald-700'
+                        : 'text-rose-700'
+                    }`}>
+                      {verificationResult.sources?.find(s => s.department === 'Revenue Department')?.status === 'VERIFIED'
+                        ? '✓ Income verified'
+                        : '✗ Income unverified'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Residence */}
+                <div className={`flex items-center space-x-2.5 p-3 rounded-lg border bg-white ${
+                  verificationResult.sources?.find(s => s.department === 'Residence Department')?.status === 'VERIFIED'
+                    ? 'border-emerald-200'
+                    : 'border-rose-200 bg-rose-50/20'
+                }`}>
+                  {verificationResult.sources?.find(s => s.department === 'Residence Department')?.status === 'VERIFIED' ? (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                  ) : (
+                    <XCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
+                  )}
+                  <div>
+                    <span className="text-xs font-bold text-slate-900 block">Residence Department</span>
+                    <span className={`text-[11px] font-semibold ${
+                      verificationResult.sources?.find(s => s.department === 'Residence Department')?.status === 'VERIFIED'
+                        ? 'text-emerald-700'
+                        : 'text-rose-700'
+                    }`}>
+                      {verificationResult.sources?.find(s => s.department === 'Residence Department')?.status === 'VERIFIED'
+                        ? '✓ Residence verified'
+                        : '✗ Residence unverified'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Data Shared vs Data Blocked */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-200">
+                {/* Data Shared */}
+                <div>
+                  <div className="flex items-center space-x-1.5 text-xs font-bold text-emerald-800 uppercase tracking-wider mb-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>Data Shared (Permitted by Policy)</span>
+                  </div>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between p-2.5 bg-white border border-emerald-200 rounded-lg">
+                      <span className="text-slate-600 font-medium">Student Name</span>
+                      <span className="font-bold text-slate-900">{verificationResult.data?.studentName || formData.name}</span>
+                    </div>
+                    <div className="flex items-center justify-between p-2.5 bg-white border border-emerald-200 rounded-lg">
+                      <span className="text-slate-600 font-medium">Marks Percentage</span>
+                      <span className="font-bold text-slate-900">{verificationResult.data?.marksPercentage ?? 82}%</span>
+                    </div>
+                    <div className="flex items-center justify-between p-2.5 bg-white border border-emerald-200 rounded-lg">
+                      <span className="text-slate-600 font-medium">Annual Income</span>
+                      <span className="font-bold text-slate-900">₹{(verificationResult.data?.annualIncome ?? formData.annualIncome).toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex items-center justify-between p-2.5 bg-white border border-emerald-200 rounded-lg">
+                      <span className="text-slate-600 font-medium">Domicile State</span>
+                      <span className="font-bold text-slate-900">{verificationResult.data?.domicileState || formData.residenceState}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Data Blocked */}
+                <div>
+                  <div className="flex items-center space-x-1.5 text-xs font-bold text-rose-800 uppercase tracking-wider mb-2.5">
+                    <Lock className="w-4 h-4 text-rose-600" />
+                    <span>Data Blocked (Data Minimization)</span>
+                  </div>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="p-2.5 bg-white border border-rose-200 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800">Bank Balance</span>
+                        <span className="text-[10px] bg-rose-100 text-rose-800 font-semibold px-2 py-0.5 rounded">BLOCKED</span>
+                      </div>
+                      <span className="text-[11px] text-rose-700 block mt-1 font-medium">Reason: Excessive data</span>
+                    </div>
+                    <div className="p-2.5 bg-white border border-rose-200 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800">Full Address</span>
+                        <span className="text-[10px] bg-rose-100 text-rose-800 font-semibold px-2 py-0.5 rounded">BLOCKED</span>
+                      </div>
+                      <span className="text-[11px] text-rose-700 block mt-1 font-medium">Reason: Not required for scholarship eligibility</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Department Source Cards Grid (Released Allowed Data) */}
             <div className="mt-8">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4">
-                Verified Information (Released to Scholarship Portal)
+                Authoritative Department Source Details
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 {/* 1. Education Department Card */}

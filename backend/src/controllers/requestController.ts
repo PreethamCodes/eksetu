@@ -16,10 +16,10 @@ export class RequestController {
     } catch (error: any) {
       console.error('[RequestController Error]', error);
 
-      if (error.code === 'UNKNOWN_SERVICE') {
+      if (error.code === 'UNKNOWN_SERVICE' || error.code === 'AUTHORIZATION_FAILED') {
         return res.status(403).json({
-          status: 'REQUEST_DENIED',
-          reason: 'UNKNOWN_SERVICE',
+          status: 'AUTHORIZATION_FAILED',
+          reason: 'AUTHORIZATION_FAILED',
           message: error.message
         });
       }

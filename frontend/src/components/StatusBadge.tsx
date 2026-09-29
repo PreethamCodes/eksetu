@@ -29,11 +29,38 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'md' })
     );
   }
 
-  if (status === 'PARTIAL_VERIFIED' || status === 'PARTIAL_ALLOW') {
+  if (status === 'PARTIAL_VERIFIED') {
+    return (
+      <span className={`inline-flex items-center rounded-full bg-amber-50 text-amber-800 border border-amber-300 ${sizeClasses[size]}`}>
+        <AlertTriangle className={`${iconSizes[size]} text-amber-600`} />
+        <span>PARTIALLY VERIFIED</span>
+      </span>
+    );
+  }
+
+  if (status === 'PARTIAL_ALLOW') {
     return (
       <span className={`inline-flex items-center rounded-full bg-amber-50 text-amber-800 border border-amber-300 ${sizeClasses[size]}`}>
         <AlertTriangle className={`${iconSizes[size]} text-amber-600`} />
         <span>PARTIAL ALLOW</span>
+      </span>
+    );
+  }
+
+  if (status === 'AUTHORIZATION_FAILED') {
+    return (
+      <span className={`inline-flex items-center rounded-full bg-rose-50 text-rose-700 border border-rose-300 ${sizeClasses[size]}`}>
+        <ShieldBan className={`${iconSizes[size]} text-rose-600`} />
+        <span>UNAUTHORIZED SERVICE</span>
+      </span>
+    );
+  }
+
+  if (status === 'VERIFICATION_FAILED') {
+    return (
+      <span className={`inline-flex items-center rounded-full bg-rose-50 text-rose-700 border border-rose-300 ${sizeClasses[size]}`}>
+        <XCircle className={`${iconSizes[size]} text-rose-600`} />
+        <span>VERIFICATION FAILED</span>
       </span>
     );
   }

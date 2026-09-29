@@ -145,17 +145,40 @@ export class InteroperabilityService {
       'residence.state'
     ];
 
+    const trace = activeRequestTraces.get(requestId) || [];
+    const timestamp = new Date().toISOString();
+
     // 3. Validate service authorization
     const serviceAuth = AuthorizationService.validateService(requestRecord.service);
     if (!serviceAuth.authorized) {
-      const err: any = new Error(`Service '${requestRecord.service}' is not authorized`);
-      err.code = 'UNKNOWN_SERVICE';
-      err.statusCode = 403;
-      throw err;
-    }
+      trace.push({
+        step: 'AUTHORIZATION_FAILED',
+        message: `Service '${requestRecord.service}' is not authorized. Interoperability request rejected.`,
+        status: 'FAILED',
+        timestamp
+      });
+      trace.push({
+        step: 'NO_DATA_RELEASED',
+        message: 'Zero departmental data was retrieved or released. Department APIs were not contacted.',
+        status: 'INFO',
+        timestamp
+      });
 
-    const trace = activeRequestTraces.get(requestId) || [];
-    const timestamp = new Date().toISOString();
+      const authFailedResult: AggregatedVerificationResult = {
+        requestId,
+        service: requestRecord.service,
+        status: 'AUTHORIZATION_FAILED',
+        consentStatus: 'GRANTED',
+        authorizationStatus: 'NOT_AUTHORIZED',
+        dataReleased: false,
+        applicant,
+        trace,
+        timestamp
+      };
+
+      await DatabaseService.updateRequestStatus(requestId, 'AUTHORIZATION_FAILED', timestamp);
+      return authFailedResult;
+    }
 
     // 4. Record decision in consent service
     const consent = await ConsentService.recordConsentDecision(requestId, decision);
@@ -199,7 +222,7 @@ export class InteroperabilityService {
     // ==========================================
     trace.push({
       step: 'CONSENT_GRANTED',
-      message: 'Citizen granted one-time consent for Scholarship Eligibility verification',
+      message: 'Citizen granted permission to proceed with verification request',
       status: 'SUCCESS',
       timestamp
     });
@@ -237,6 +260,7 @@ export class InteroperabilityService {
         requestId,
         service: requestRecord.service,
         status: 'POLICY_DENIED',
+        purpose,
         consentStatus: 'GRANTED',
         authorizationStatus: 'AUTHORIZED',
         dataReleased: false,
@@ -259,9 +283,18 @@ export class InteroperabilityService {
     const verifiedData: AggregatedVerificationResult['verifiedData'] = {};
     const failDept = simulateFailure?.department;
 
-    const isEduAllowed = policyResult.allowedFields.some(f => f.includes('education'));
-    const isIncomeAllowed = policyResult.allowedFields.some(f => f.includes('income'));
-    const isResidenceAllowed = policyResult.allowedFields.some(f => f.includes('residence'));
+    const isEduAllowed = policyResult.allowedFields.some(f => {
+      const fl = f.toLowerCase();
+      return fl.includes('education') || fl.includes('qualification') || fl.includes('studentname') || fl.includes('marks');
+    });
+    const isIncomeAllowed = policyResult.allowedFields.some(f => {
+      const fl = f.toLowerCase();
+      return fl.includes('income') || fl.includes('annualincome');
+    });
+    const isResidenceAllowed = policyResult.allowedFields.some(f => {
+      const fl = f.toLowerCase();
+      return fl.includes('residence') || fl.includes('state') || fl.includes('domicile');
+    });
 
     // 1. Education Department Provider (Only called if allowed)
     if (isEduAllowed) {
@@ -281,18 +314,21 @@ export class InteroperabilityService {
 
         trace.push({
           step: 'EDUCATION_DEPARTMENT_VERIFIED',
-          message: 'Education Department API contacted — Academic qualification verified (response minimized)',
+          message: 'Education Department API contacted — Academic qualification record verified by department',
           status: 'SUCCESS',
           timestamp: eduRes.verifiedAt
         });
       } else {
         verifiedData.education = {
+          studentName: applicant.name,
           qualification: applicant.qualification || 'Unverified',
-          status: 'FAILED'
+          marksPercentage: applicant.marksPercentage,
+          status: 'FAILED',
+          verified: false
         };
         trace.push({
           step: 'EDUCATION_DEPARTMENT_FAILED',
-          message: `Education Department API returned error: ${eduRes.error || 'Verification failed'}`,
+          message: `Education Department API returned verification failure: ${eduRes.error || 'Record unverified'}`,
           status: 'FAILED',
           timestamp: eduRes.verifiedAt
         });
@@ -317,18 +353,19 @@ export class InteroperabilityService {
 
         trace.push({
           step: 'REVENUE_DEPARTMENT_VERIFIED',
-          message: 'Revenue Department API contacted — Annual income validated (bank balance & tax history filtered out)',
+          message: 'Revenue Department API contacted — Annual income record verified by department (extraneous fields stripped)',
           status: 'SUCCESS',
           timestamp: revRes.verifiedAt
         });
       } else {
         verifiedData.income = {
           annualIncome: applicant.annualIncome || 0,
-          status: 'FAILED'
+          status: 'FAILED',
+          verified: false
         };
         trace.push({
           step: 'REVENUE_DEPARTMENT_FAILED',
-          message: `Revenue Department API returned error: ${revRes.error || 'Verification failed'}`,
+          message: `Revenue Department API returned verification failure: ${revRes.error || 'Record unverified'}`,
           status: 'FAILED',
           timestamp: revRes.verifiedAt
         });
@@ -353,18 +390,20 @@ export class InteroperabilityService {
 
         trace.push({
           step: 'RESIDENCE_DEPARTMENT_VERIFIED',
-          message: 'Residence Department API contacted — State domicile validated (full address & property details filtered out)',
+          message: 'Residence Department API contacted — State domicile record verified by department (extraneous fields stripped)',
           status: 'SUCCESS',
           timestamp: resRes.verifiedAt
         });
       } else {
         verifiedData.residence = {
           state: applicant.residenceState || 'Unknown',
-          status: 'FAILED'
+          domicileState: applicant.residenceState || 'Unknown',
+          status: 'FAILED',
+          verified: false
         };
         trace.push({
           step: 'RESIDENCE_DEPARTMENT_FAILED',
-          message: `Residence Department API returned error: ${resRes.error || 'Verification failed'}`,
+          message: `Residence Department API returned verification failure: ${resRes.error || 'Record unverified'}`,
           status: 'FAILED',
           timestamp: resRes.verifiedAt
         });
@@ -376,33 +415,48 @@ export class InteroperabilityService {
     const verifiedSourcesCount = sources.filter(s => s.status === 'VERIFIED').length;
 
     let overallStatus: VerificationStatus = 'VERIFIED';
-    if (verifiedSourcesCount === 0) {
-      overallStatus = 'FAILED';
+    if (totalSources === 0) {
+      overallStatus = 'POLICY_DENIED';
+    } else if (verifiedSourcesCount === 0) {
+      overallStatus = 'VERIFICATION_FAILED';
     } else if (verifiedSourcesCount < totalSources) {
       overallStatus = 'PARTIAL_VERIFIED';
     }
 
+    // Enforce final data minimization on aggregated payload
+    const dataPackage = PolicyService.buildMinimizedDataPackage(
+      {
+        education: verifiedData.education,
+        income: verifiedData.income,
+        residence: verifiedData.residence,
+        applicant
+      },
+      policyResult.allowedFields
+    );
+
     trace.push({
       step: 'DATA_MINIMIZATION_ENFORCED',
-      message: `Data minimization applied: ${policyResult.blockedFields.length} unauthorized/extraneous fields blocked from payload`,
+      message: `Data minimization applied: unauthorized and extraneous provider fields stripped by policy engine`,
       status: 'SUCCESS',
       timestamp: new Date().toISOString()
     });
 
     trace.push({
       step: 'VERIFICATION_COMPLETE',
-      message: `EKSetu interoperability orchestration complete. Status: ${overallStatus}`,
-      status: overallStatus === 'FAILED' ? 'FAILED' : 'SUCCESS',
+      message: `Department verification completed. Final status: ${overallStatus}`,
+      status: overallStatus === 'VERIFICATION_FAILED' ? 'FAILED' : 'SUCCESS',
       timestamp: new Date().toISOString()
     });
 
     const result: AggregatedVerificationResult = {
       requestId,
       service: requestRecord.service,
+      purpose,
       status: overallStatus,
       consentStatus: 'GRANTED',
       authorizationStatus: 'AUTHORIZED',
-      dataReleased: true,
+      dataReleased: overallStatus !== 'VERIFICATION_FAILED',
+      data: dataPackage,
       policy: policyResult,
       consent: consent || undefined,
       applicant,
