@@ -1,3 +1,14 @@
+export type VerificationStatus =
+  | 'CONSENT_PENDING'
+  | 'AUTHORIZED'
+  | 'CONSENT_DENIED'
+  | 'REQUEST_DENIED'
+  | 'VERIFIED'
+  | 'PARTIAL_VERIFIED'
+  | 'FAILED';
+
+export type ConsentDecision = 'PENDING' | 'GRANTED' | 'DENIED';
+
 export interface ApplicantFormData {
   applicationId: string;
   name: string;
@@ -7,9 +18,38 @@ export interface ApplicantFormData {
   residenceState: string;
 }
 
+export interface ConsentRecord {
+  id?: string;
+  requestId: string;
+  service: string;
+  serviceName?: string;
+  purpose: string;
+  requestedFields: string[];
+  decision: ConsentDecision;
+  consentType: 'ONE_TIME';
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface ConsentPendingResponse {
+  requestId: string;
+  service: string;
+  serviceName: string;
+  status: 'CONSENT_PENDING';
+  applicant: ApplicantFormData;
+  consent: {
+    purpose: string;
+    requestedFields: string[];
+    consentType: 'ONE_TIME';
+    createdAt: string;
+  };
+  trace: TraceStep[];
+  timestamp: string;
+}
+
 export interface DepartmentSourceSummary {
   department: string;
-  status: 'VERIFIED' | 'FAILED';
+  status: 'VERIFIED' | 'FAILED' | 'NOT_REQUESTED';
   verifiedAt?: string;
   error?: string;
 }
@@ -24,9 +64,13 @@ export interface TraceStep {
 export interface VerificationResult {
   requestId: string;
   service: string;
-  status: 'VERIFIED' | 'PARTIAL_VERIFIED' | 'FAILED';
-  applicant: ApplicantFormData;
-  verifiedData: {
+  status: VerificationStatus;
+  consentStatus: ConsentDecision;
+  authorizationStatus: 'AUTHORIZED' | 'NOT_AUTHORIZED';
+  dataReleased: boolean;
+  consent?: ConsentRecord;
+  applicant?: ApplicantFormData;
+  verifiedData?: {
     education?: {
       qualification: string;
       studentStatus?: string;
@@ -43,7 +87,7 @@ export interface VerificationResult {
       status: 'VERIFIED' | 'FAILED';
     };
   };
-  sources: DepartmentSourceSummary[];
+  sources?: DepartmentSourceSummary[];
   trace: TraceStep[];
   timestamp: string;
 }
@@ -52,6 +96,7 @@ export interface VerificationRequestPayload {
   service: string;
   applicant: ApplicantFormData;
   requestedData: string[];
+  purpose?: string;
   simulateFailure?: {
     department?: 'education' | 'revenue' | 'residence';
     reason?: string;

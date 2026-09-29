@@ -58,8 +58,8 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
           <div>
             <div className="flex items-center space-x-2">
               <h1 className="text-xl font-bold tracking-tight text-[#0F2642]">EKSetu</h1>
-              <span className="text-xs bg-sky-100 text-sky-800 font-semibold px-2 py-0.5 rounded border border-sky-200">
-                V1 Prototype
+              <span className="text-xs bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded border border-emerald-200">
+                V2 Consent & Auth
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium">Government Interoperability Platform</p>

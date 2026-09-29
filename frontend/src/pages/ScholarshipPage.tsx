@@ -1,10 +1,16 @@
 import React, { useState } from 'react';
-import { submitVerificationRequest } from '../services/api';
-import { ApplicantFormData, VerificationResult } from '../types';
+import { initiateVerification, submitConsentDecision } from '../services/api';
+import {
+  ApplicantFormData,
+  ConsentPendingResponse,
+  VerificationResult
+} from '../types';
 import { StatusBadge } from '../components/StatusBadge';
 import { DepartmentResultCard } from '../components/DepartmentResultCard';
 import { VerificationProgress } from '../components/VerificationProgress';
 import { RequestTrace } from '../components/RequestTrace';
+import { ConsentModal } from '../components/ConsentModal';
+import { ConsentDetailsCard } from '../components/ConsentDetailsCard';
 import {
   FileText,
   ShieldCheck,
@@ -12,7 +18,10 @@ import {
   Sparkles,
   AlertCircle,
   CheckCircle2,
-  Sliders
+  Sliders,
+  ShieldAlert,
+  Loader2,
+  ArrowLeft
 } from 'lucide-react';
 
 const DEFAULT_FORM: ApplicantFormData = {
@@ -26,7 +35,10 @@ const DEFAULT_FORM: ApplicantFormData = {
 
 export const ScholarshipPage: React.FC = () => {
   const [formData, setFormData] = useState<ApplicantFormData>(DEFAULT_FORM);
-  const [loading, setLoading] = useState(false);
+  const [isInitiating, setIsInitiating] = useState(false);
+  const [pendingConsent, setPendingConsent] = useState<ConsentPendingResponse | null>(null);
+  const [isSubmittingConsent, setIsSubmittingConsent] = useState(false);
+  const [isOrchestrating, setIsOrchestrating] = useState(false);
   const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [simulatedFailureDept, setSimulatedFailureDept] = useState<'none' | 'education' | 'revenue' | 'residence'>('none');
@@ -39,42 +51,86 @@ export const ScholarshipPage: React.FC = () => {
     }));
   };
 
-  const handleVerify = async (e: React.FormEvent) => {
+  /**
+   * Step 1: Citizen initiates verification -> Gateway creates request in CONSENT_PENDING state
+   */
+  const handleInitiateVerification = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setLoading(true);
+    setIsInitiating(true);
 
     try {
       const payload = {
         service: 'SCHOLARSHIP',
         applicant: formData,
         requestedData: ['education', 'income', 'residence'],
+        purpose: 'Scholarship Eligibility',
         simulateFailure: simulatedFailureDept !== 'none' ? {
           department: simulatedFailureDept,
           reason: 'Simulated department registry outage / expired certificate demo'
         } : undefined
       };
 
-      // Call EKSetu Interoperability Gateway API
-      const result = await submitVerificationRequest(payload);
-
-      // Short delay to allow visual completion of the orchestration steps
-      setTimeout(() => {
-        setVerificationResult(result);
-        setLoading(false);
-      }, 2800);
+      const pendingRes = await initiateVerification(payload);
+      setPendingConsent(pendingRes);
+      setIsInitiating(false);
     } catch (err: any) {
-      setError(err.message || 'Verification request failed');
-      setLoading(false);
+      setError(err.message || 'Failed to initiate verification request');
+      setIsInitiating(false);
+    }
+  };
+
+  /**
+   * Step 2: Citizen chooses ALLOW or DENY on the Consent Screen
+   */
+  const handleConsentDecision = async (decision: 'ALLOW' | 'DENY') => {
+    if (!pendingConsent) return;
+    setIsSubmittingConsent(true);
+    setError(null);
+
+    try {
+      if (decision === 'ALLOW') {
+        setIsOrchestrating(true);
+      }
+
+      const result = await submitConsentDecision({
+        requestId: pendingConsent.requestId,
+        decision
+      });
+
+      if (decision === 'ALLOW') {
+        // Stepper animation runs for visual clarity in SIH demo
+        setTimeout(() => {
+          setVerificationResult(result);
+          setPendingConsent(null);
+          setIsSubmittingConsent(false);
+          setIsOrchestrating(false);
+        }, 3200);
+      } else {
+        // Immediate denial transition
+        setVerificationResult(result);
+        setPendingConsent(null);
+        setIsSubmittingConsent(false);
+        setIsOrchestrating(false);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to process consent decision');
+      setIsSubmittingConsent(false);
+      setIsOrchestrating(false);
     }
   };
 
   const handleReset = () => {
     setFormData(DEFAULT_FORM);
+    setPendingConsent(null);
     setVerificationResult(null);
     setError(null);
-    setLoading(false);
+    setIsInitiating(false);
+    setIsSubmittingConsent(false);
+    setIsOrchestrating(false);
   };
+
+  const isDenied = verificationResult?.status === 'CONSENT_DENIED';
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-8 py-8 sm:py-12">
@@ -92,14 +148,14 @@ export const ScholarshipPage: React.FC = () => {
                 </span>
                 <span className="text-slate-300">|</span>
                 <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                  EKSetu Enabled
+                  EKSetu V2 Consent & Auth
                 </span>
               </div>
               <h2 className="text-xl sm:text-2xl font-black text-[#0F2642] tracking-tight mt-0.5">
                 National Merit Scholarship Scheme 2026
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Fictional demo service demonstrating seamless cross-departmental interoperability.
+                Fictional demo service demonstrating citizen consent and cross-departmental interoperability.
               </p>
             </div>
           </div>
@@ -124,7 +180,7 @@ export const ScholarshipPage: React.FC = () => {
             <select
               value={simulatedFailureDept}
               onChange={e => setSimulatedFailureDept(e.target.value as any)}
-              disabled={loading || verificationResult !== null}
+              disabled={isInitiating || pendingConsent !== null || isOrchestrating || verificationResult !== null}
               className="bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-60"
             >
               <option value="none">Normal Verification (All 3 Departments Succeed)</option>
@@ -136,17 +192,17 @@ export const ScholarshipPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Flow: Form vs Results */}
-      {!verificationResult && !loading && (
+      {/* STAGE 1: Application Form */}
+      {!verificationResult && !isOrchestrating && (
         <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
           <div className="mb-6">
             <h3 className="text-lg font-bold text-[#0F2642]">Applicant Information</h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Review or edit applicant details below before requesting automated verification via EKSetu.
+              Review or edit applicant details below before initiating automated verification via EKSetu.
             </p>
           </div>
 
-          <form onSubmit={handleVerify} className="space-y-6">
+          <form onSubmit={handleInitiateVerification} className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -252,7 +308,7 @@ export const ScholarshipPage: React.FC = () => {
             <div className="bg-sky-50/70 border border-sky-200 rounded-xl p-4 flex items-start space-x-3 text-xs text-sky-900">
               <Sparkles className="w-5 h-5 text-sky-700 flex-shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold">Zero Paperwork Interoperability:</span> Clicking below will not upload documents. Instead, EKSetu will securely orchestrate verification directly across the Education, Revenue, and Residence department registries.
+                <span className="font-bold">Citizen Consent Protected:</span> Clicking below will generate a secure verification request. You will be prompted with a dedicated EKSetu consent screen to explicitly allow or deny departmental data release.
               </div>
             </div>
 
@@ -260,25 +316,137 @@ export const ScholarshipPage: React.FC = () => {
             <div className="pt-2">
               <button
                 type="submit"
-                className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-[#0F2642] hover:bg-[#1A4472] text-white font-bold text-base shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-3"
+                disabled={isInitiating}
+                className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-[#0F2642] hover:bg-[#1A4472] text-white font-bold text-base shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-3 disabled:opacity-60"
               >
-                <ShieldCheck className="w-5 h-5 text-sky-400" />
-                <span>Verify Automatically with EKSetu</span>
+                {isInitiating ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin text-sky-400" />
+                    <span>Initiating Request...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-5 h-5 text-sky-400" />
+                    <span>Verify with EKSetu</span>
+                  </>
+                )}
               </button>
             </div>
           </form>
         </div>
       )}
 
-      {/* Loading Progress State */}
-      {loading && (
+      {/* STAGE 2: Citizen Consent Modal Screen */}
+      {pendingConsent && !isOrchestrating && (
+        <ConsentModal
+          consentData={pendingConsent}
+          onDecision={handleConsentDecision}
+          submitting={isSubmittingConsent}
+        />
+      )}
+
+      {/* STAGE 3A: Orchestration Loading Progress (when ALLOW chosen) */}
+      {isOrchestrating && (
         <VerificationProgress />
       )}
 
-      {/* Verification Result Display */}
-      {verificationResult && (
-        <div className="space-y-6">
-          {/* Result Banner */}
+      {/* STAGE 4A: Outcome - CONSENT DENIED */}
+      {isDenied && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          <div className="bg-white rounded-2xl border border-rose-200 p-6 sm:p-8 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-rose-100 gap-4">
+              <div className="flex items-start space-x-4">
+                <div className="p-3 bg-rose-50 text-rose-700 rounded-xl border border-rose-200">
+                  <ShieldAlert className="w-7 h-7" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2 mb-1">
+                    <span className="text-xs font-bold text-rose-700 uppercase tracking-wider">
+                      Access Refused
+                    </span>
+                  </div>
+                  <h3 className="text-2xl font-black text-[#0F2642]">
+                    Consent Denied
+                  </h3>
+                  <p className="text-sm font-semibold text-slate-700 mt-1">
+                    Your information was not shared.
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    No government department data was retrieved through EKSetu for this request.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:items-end space-y-1.5">
+                <span className="text-xs text-slate-400 font-semibold uppercase">Request Status</span>
+                <StatusBadge status="CONSENT_DENIED" size="lg" />
+                <div className="text-[11px] font-mono text-slate-500 mt-1">
+                  Request ID: <span className="font-bold text-[#0F2642]">{verificationResult?.requestId}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Empty Department Table / Demonstration of Non-Release */}
+            <div className="mt-6">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
+                Department Registries Status
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70">
+                  <div className="text-xs font-bold text-slate-500">Education Department</div>
+                  <div className="text-sm font-bold text-slate-400 mt-2">— (Not Retrieved)</div>
+                  <div className="text-[11px] text-slate-400 mt-1">Access blocked by citizen denial</div>
+                </div>
+
+                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70">
+                  <div className="text-xs font-bold text-slate-500">Revenue Department</div>
+                  <div className="text-sm font-bold text-slate-400 mt-2">— (Not Retrieved)</div>
+                  <div className="text-[11px] text-slate-400 mt-1">Access blocked by citizen denial</div>
+                </div>
+
+                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70">
+                  <div className="text-xs font-bold text-slate-500">Residence Department</div>
+                  <div className="text-sm font-bold text-slate-400 mt-2">— (Not Retrieved)</div>
+                  <div className="text-[11px] text-slate-400 mt-1">Access blocked by citizen denial</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Consent Metadata Record */}
+            <ConsentDetailsCard
+              consent={verificationResult?.consent}
+              requestId={verificationResult?.requestId || ''}
+              consentDecision="DENIED"
+            />
+
+            {/* Request Trace */}
+            {verificationResult?.trace && (
+              <RequestTrace
+                trace={verificationResult.trace}
+                requestId={verificationResult.requestId}
+              />
+            )}
+
+            {/* Return Action */}
+            <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-xs text-slate-500">
+                You may re-apply or choose manual physical verification where permitted.
+              </span>
+              <button
+                onClick={handleReset}
+                className="px-6 py-2.5 rounded-xl bg-[#0F2642] hover:bg-[#1A4472] text-white font-bold text-xs flex items-center space-x-2 transition-colors shadow-sm"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Return to Application</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STAGE 4B: Outcome - VERIFICATION COMPLETE (when ALLOW chosen) */}
+      {verificationResult && !isDenied && (
+        <div className="space-y-6 animate-in fade-in duration-300">
           <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-slate-100 gap-4">
               <div>
@@ -291,9 +459,9 @@ export const ScholarshipPage: React.FC = () => {
                   Verification Complete
                 </h3>
                 <div className="flex items-center space-x-3 mt-2 text-xs text-slate-600">
-                  <span>Applicant: <strong className="text-slate-800">{verificationResult.applicant.name}</strong></span>
+                  <span>Applicant: <strong className="text-slate-800">{verificationResult.applicant?.name || formData.name}</strong></span>
                   <span className="text-slate-300">•</span>
-                  <span>App ID: <strong className="font-mono text-slate-800">{verificationResult.applicant.applicationId}</strong></span>
+                  <span>App ID: <strong className="font-mono text-slate-800">{verificationResult.applicant?.applicationId || formData.applicationId}</strong></span>
                 </div>
               </div>
 
@@ -317,11 +485,11 @@ export const ScholarshipPage: React.FC = () => {
                   type="education"
                   departmentName="Education Department"
                   fieldLabel="Academic Qualification"
-                  fieldValue={verificationResult.verifiedData.education?.qualification || formData.qualification}
-                  status={verificationResult.verifiedData.education?.status || 'FAILED'}
+                  fieldValue={verificationResult.verifiedData?.education?.qualification || formData.qualification}
+                  status={verificationResult.verifiedData?.education?.status || 'FAILED'}
                   source="Education Department"
-                  verifiedAt={verificationResult.sources.find(s => s.department === 'Education Department')?.verifiedAt}
-                  extraDetails={verificationResult.verifiedData.education?.studentStatus ? `Registry Status: ${verificationResult.verifiedData.education.studentStatus}` : undefined}
+                  verifiedAt={verificationResult.sources?.find(s => s.department === 'Education Department')?.verifiedAt}
+                  extraDetails={verificationResult.verifiedData?.education?.studentStatus ? `Registry Status: ${verificationResult.verifiedData.education.studentStatus}` : undefined}
                 />
 
                 {/* 2. Revenue Department Card */}
@@ -329,11 +497,11 @@ export const ScholarshipPage: React.FC = () => {
                   type="income"
                   departmentName="Revenue Department"
                   fieldLabel="Annual Family Income"
-                  fieldValue={verificationResult.verifiedData.income?.annualIncome ?? formData.annualIncome}
-                  status={verificationResult.verifiedData.income?.status || 'FAILED'}
+                  fieldValue={verificationResult.verifiedData?.income?.annualIncome ?? formData.annualIncome}
+                  status={verificationResult.verifiedData?.income?.status || 'FAILED'}
                   source="Revenue Department"
-                  verifiedAt={verificationResult.sources.find(s => s.department === 'Revenue Department')?.verifiedAt}
-                  extraDetails={verificationResult.verifiedData.income?.incomeStatus ? `Certificate Status: ${verificationResult.verifiedData.income.incomeStatus}` : undefined}
+                  verifiedAt={verificationResult.sources?.find(s => s.department === 'Revenue Department')?.verifiedAt}
+                  extraDetails={verificationResult.verifiedData?.income?.incomeStatus ? `Certificate Status: ${verificationResult.verifiedData.income.incomeStatus}` : undefined}
                 />
 
                 {/* 3. Residence Department Card */}
@@ -341,14 +509,29 @@ export const ScholarshipPage: React.FC = () => {
                   type="residence"
                   departmentName="Residence Department"
                   fieldLabel="State Domicile"
-                  fieldValue={verificationResult.verifiedData.residence?.state || formData.residenceState}
-                  status={verificationResult.verifiedData.residence?.status || 'FAILED'}
+                  fieldValue={verificationResult.verifiedData?.residence?.state || formData.residenceState}
+                  status={verificationResult.verifiedData?.residence?.status || 'FAILED'}
                   source="Residence Department"
-                  verifiedAt={verificationResult.sources.find(s => s.department === 'Residence Department')?.verifiedAt}
-                  extraDetails={verificationResult.verifiedData.residence?.residenceStatus ? `Domicile Record: ${verificationResult.verifiedData.residence.residenceStatus}` : undefined}
+                  verifiedAt={verificationResult.sources?.find(s => s.department === 'Residence Department')?.verifiedAt}
+                  extraDetails={verificationResult.verifiedData?.residence?.residenceStatus ? `Domicile Record: ${verificationResult.verifiedData.residence.residenceStatus}` : undefined}
                 />
               </div>
             </div>
+
+            {/* Consent Details Card */}
+            <ConsentDetailsCard
+              consent={verificationResult.consent}
+              requestId={verificationResult.requestId}
+              consentDecision="GRANTED"
+            />
+
+            {/* Request Trace Expandable */}
+            {verificationResult.trace && (
+              <RequestTrace
+                trace={verificationResult.trace}
+                requestId={verificationResult.requestId}
+              />
+            )}
 
             {/* Action Bar */}
             <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -366,12 +549,6 @@ export const ScholarshipPage: React.FC = () => {
               </button>
             </div>
           </div>
-
-          {/* Request Trace Expandable */}
-          <RequestTrace
-            trace={verificationResult.trace}
-            requestId={verificationResult.requestId}
-          />
         </div>
       )}
     </div>

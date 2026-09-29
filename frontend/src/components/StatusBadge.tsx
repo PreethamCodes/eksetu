@@ -1,8 +1,9 @@
 import React from 'react';
-import { CheckCircle2, AlertTriangle, XCircle, Clock } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, Clock, ShieldAlert, KeyRound } from 'lucide-react';
+import { VerificationStatus } from '../types';
 
 interface StatusBadgeProps {
-  status: 'VERIFIED' | 'PARTIAL_VERIFIED' | 'FAILED' | 'PENDING';
+  status: VerificationStatus | 'PENDING';
   size?: 'sm' | 'md' | 'lg';
 }
 
@@ -37,11 +38,29 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'md' })
     );
   }
 
-  if (status === 'FAILED') {
+  if (status === 'CONSENT_DENIED') {
+    return (
+      <span className={`inline-flex items-center rounded-full bg-rose-50 text-rose-700 border border-rose-300 ${sizeClasses[size]}`}>
+        <ShieldAlert className={`${iconSizes[size]} text-rose-600`} />
+        <span>CONSENT DENIED</span>
+      </span>
+    );
+  }
+
+  if (status === 'CONSENT_PENDING') {
+    return (
+      <span className={`inline-flex items-center rounded-full bg-sky-50 text-sky-800 border border-sky-300 ${sizeClasses[size]}`}>
+        <KeyRound className={`${iconSizes[size]} text-sky-600 animate-pulse`} />
+        <span>CONSENT PENDING</span>
+      </span>
+    );
+  }
+
+  if (status === 'REQUEST_DENIED' || status === 'FAILED') {
     return (
       <span className={`inline-flex items-center rounded-full bg-rose-50 text-rose-700 border border-rose-300 ${sizeClasses[size]}`}>
         <XCircle className={`${iconSizes[size]} text-rose-600`} />
-        <span>VERIFICATION FAILED</span>
+        <span>REQUEST DENIED</span>
       </span>
     );
   }
