@@ -5,18 +5,27 @@ import { VerificationRequestInput } from '../models/types';
 
 export class RequestController {
   /**
-   * Primary V1 Gateway Endpoint
+   * Primary V2 Gateway Endpoint: Initiates Verification & Requires Consent
    * POST /api/v1/requests
    */
   static async createVerificationRequest(req: Request, res: Response) {
     try {
       const payload: VerificationRequestInput = req.body;
-      const result = await InteroperabilityService.processVerificationRequest(payload);
+      const result = await InteroperabilityService.initiateVerificationRequest(payload);
       res.status(200).json(result);
     } catch (error: any) {
       console.error('[RequestController Error]', error);
-      res.status(500).json({
-        error: 'Failed to process verification request',
+
+      if (error.code === 'UNKNOWN_SERVICE') {
+        return res.status(403).json({
+          status: 'REQUEST_DENIED',
+          reason: 'UNKNOWN_SERVICE',
+          message: error.message
+        });
+      }
+
+      res.status(error.statusCode || 500).json({
+        error: error.code || 'GATEWAY_ERROR',
         message: error.message || 'Internal gateway error'
       });
     }
@@ -32,12 +41,18 @@ export class RequestController {
       const record = await DatabaseService.getRequestById(requestId);
 
       if (!record) {
-        return res.status(404).json({ error: `Request ${requestId} not found` });
+        return res.status(404).json({
+          error: 'REQUEST_NOT_FOUND',
+          message: `Request ${requestId} not found`
+        });
       }
 
       res.status(200).json(record);
     } catch (error: any) {
-      res.status(500).json({ error: 'Failed to fetch request' });
+      res.status(500).json({
+        error: 'DATABASE_ERROR',
+        message: 'Failed to fetch request'
+      });
     }
   }
 
@@ -49,7 +64,8 @@ export class RequestController {
     res.status(200).json({
       status: 'ok',
       service: 'EKSetu API',
-      version: '1.0.0'
+      version: '2.0.0',
+      capabilities: ['INTEROPERABILITY', 'CITIZEN_CONSENT', 'AUTHORIZATION']
     });
   }
 }

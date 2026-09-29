@@ -29,11 +29,13 @@ app.get('/', (req, res) => {
   res.json({
     message: 'EKSetu Government Interoperability Gateway API',
     tagline: 'Share Proof, Not Databases.',
-    version: '1.0.0',
+    version: '2.0.0',
     status: 'ACTIVE',
+    capabilities: ['INTEROPERABILITY', 'CITIZEN_CONSENT', 'AUTHORIZATION'],
     endpoints: {
       health: '/api/health',
       requests: '/api/v1/requests',
+      consent: '/api/v1/consent',
       mockEducation: '/api/mock/education',
       mockRevenue: '/api/mock/revenue',
       mockResidence: '/api/mock/residence'
@@ -51,10 +53,11 @@ app.use(errorHandler);
 // Start server
 app.listen(PORT, () => {
   console.log(`====================================================`);
-  console.log(`  EKSetu Interoperability Gateway (V1 Prototype)`);
+  console.log(`  EKSetu Interoperability Gateway (V2: Consent & Auth)`);
   console.log(`  Listening on port: ${PORT}`);
   console.log(`  Health Check: http://localhost:${PORT}/api/health`);
-  console.log(`  Primary Endpoint: http://localhost:${PORT}/api/v1/requests`);
+  console.log(`  Request Endpoint: http://localhost:${PORT}/api/v1/requests`);
+  console.log(`  Consent Endpoint: http://localhost:${PORT}/api/v1/consent`);
   console.log(`====================================================`);
 });
 

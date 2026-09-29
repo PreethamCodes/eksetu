@@ -1,11 +1,11 @@
-# EKSetu — Government Interoperability Platform (V1 Prototype)
+# EKSetu — Government Interoperability Platform (V2: Consent & Authorization)
 
 > **“Share Proof, Not Databases.”**  
 > EKSetu is a consent- and policy-driven interoperability fabric that enables authorized government services to securely obtain only the verified information they need from existing departmental systems, without centralizing or duplicating citizen databases.
 
 ---
 
-## 1. System Architecture
+## 1. System Architecture (V2 Flow)
 
 ```text
 CITIZEN
@@ -13,26 +13,46 @@ CITIZEN
    ▼
 Scholarship Portal (Government Service)
    │
-   │  "Verify Automatically with EKSetu"
+   │  "Verify with EKSetu"
    ▼
 EKSetu Gateway (/api/v1/requests)
    │
-   ├── Education Department API (/api/mock/education)
-   ├── Revenue Department API   (/api/mock/revenue)
-   └── Residence Department API (/api/mock/residence)
+   ▼
+STATUS: CONSENT_PENDING (No department APIs called yet)
    │
    ▼
-Aggregated Verified Proof & Provenance
+CONSENT SCREEN (Citizen reviews requested scopes)
    │
-   ▼
-Scholarship Portal Result Screen (✓ Verified)
+   ├── [ DENY ] ─────────────────────────┐
+   │                                     ▼
+   │                              CONSENT_DENIED
+   │                          Zero Department Data Released
+   │
+   └── [ ALLOW ] ────────────────────────┐
+                                         ▼
+                                AUTHORIZATION CHECK
+                                         │
+                                         ▼
+                              Interoperability Gateway
+                                         │
+                  ┌──────────────────────┼──────────────────────┐
+                  ▼                      ▼                      ▼
+             Education API          Revenue API            Residence API
+                  │                      │                      │
+                  └──────────────────────┼──────────────────────┘
+                                         ▼
+                        Aggregated Verified Proof & Provenance
+                                         │
+                                         ▼
+                        Scholarship Portal (✓ VERIFIED)
 ```
 
-### Key Architectural Principles
-1. **Existing Government Services remain citizen-facing**: Citizens do not have to leave their portal to manage separate logins.
-2. **EKSetu is the interoperability layer, not a destination database**: Departmental source registries remain authoritative.
-3. **Attribute-level verification & data minimization**: Services receive only verified proof (e.g. `qualification: "Bachelor's Degree"`), not entire citizen dossiers.
-4. **End-to-end traceability**: Every transaction generates a unique `Request ID` and an auditable execution trace.
+### Key Architectural Principles in V2
+1. **Consent-First Architecture**: Department APIs are **NEVER** contacted when a request is created. They wait for citizen authorization.
+2. **Server-Enforced Trust**: The backend—not the frontend—validates that valid consent has been granted before routing to providers.
+3. **One-Time Purpose-Bound Access**: Consent is strictly scoped to `ONE_TIME` access for `Scholarship Eligibility`.
+4. **Zero Data on Denial**: If the citizen clicks **DENY**, zero department calls are made, and zero data is returned or stored.
+5. **Auditable Consent Provenance**: Every consent decision is recorded with a timestamp, service ID, requested scopes, and bound to the Request ID.
 
 ---
 
@@ -44,19 +64,22 @@ EKSetu/
 │   ├── src/
 │   │   ├── controllers/
 │   │   │   ├── requestController.ts        # /api/v1/requests & /api/health
+│   │   │   ├── consentController.ts        # POST /api/v1/consent (ALLOW / DENY)
 │   │   │   └── mockDepartmentController.ts # /api/mock/{education,revenue,residence}
 │   │   ├── routes/
 │   │   │   ├── apiRoutes.ts                # Gateway API routes
 │   │   │   └── mockRoutes.ts               # Department simulation routes
 │   │   ├── services/
 │   │   │   ├── interoperabilityService.ts  # Gateway orchestration & aggregation
+│   │   │   ├── consentService.ts           # Consent request creation & decision recording
+│   │   │   ├── authorizationService.ts     # Trusted service verification (SCHOLARSHIP)
 │   │   │   └── databaseService.ts          # Supabase & in-memory persistence
 │   │   ├── providers/
 │   │   │   ├── educationProvider.ts        # Higher Education registry adapter
 │   │   │   ├── revenueProvider.ts          # Revenue / Income certificate adapter
 │   │   │   └── residenceProvider.ts        # Domicile / Residence registry adapter
 │   │   ├── models/
-│   │   │   └── types.ts                    # Strongly typed contracts
+│   │   │   └── types.ts                    # Strongly typed contracts (V2 types)
 │   │   ├── middleware/
 │   │   │   ├── errorHandler.ts             # Centralized error handler
 │   │   │   └── validateRequest.ts          # Zod schema validation
@@ -73,17 +96,19 @@ EKSetu/
 ├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── Header.tsx                  # Government banner & health status
+│   │   │   ├── Header.tsx                  # Government banner & health status (V2 badge)
 │   │   │   ├── Footer.tsx                  # Disclaimer & architecture tags
-│   │   │   ├── StatusBadge.tsx             # VERIFIED / PARTIAL / FAILED badges
-│   │   │   ├── VerificationProgress.tsx    # Multi-department orchestration stepper
+│   │   │   ├── StatusBadge.tsx             # VERIFIED / CONSENT_DENIED / PENDING badges
+│   │   │   ├── ConsentModal.tsx            # Dedicated Citizen Consent Screen (ALLOW/DENY)
+│   │   │   ├── ConsentDetailsCard.tsx      # Expandable Consent Record metadata
+│   │   │   ├── VerificationProgress.tsx    # Stepper showing consent, auth, and provider calls
 │   │   │   ├── DepartmentResultCard.tsx    # Source attribution & attribute cards
 │   │   │   └── RequestTrace.tsx            # Expandable sequence flow trace
 │   │   ├── pages/
-│   │   │   ├── LandingPage.tsx             # Platform overview & flow diagram
-│   │   │   └── ScholarshipPage.tsx         # Scholarship form & verification UX
+│   │   │   ├── LandingPage.tsx             # V2 Architecture overview & flow diagram
+│   │   │   └── ScholarshipPage.tsx         # Scholarship form & V2 Consent/Verification UX
 │   │   ├── services/
-│   │   │   └── api.ts                      # Client API caller
+│   │   │   └── api.ts                      # Client API caller (initiate & submitConsent)
 │   │   ├── types/
 │   │   │   └── index.ts                    # UI TypeScript types
 │   │   ├── App.tsx                         # Root app component
@@ -108,11 +133,12 @@ EKSetu/
 {
   "status": "ok",
   "service": "EKSetu API",
-  "version": "1.0.0"
+  "version": "2.0.0",
+  "capabilities": ["INTEROPERABILITY", "CITIZEN_CONSENT", "AUTHORIZATION"]
 }
 ```
 
-### 3.2 Primary Verification Gateway
+### 3.2 Step 1: Initiate Verification Request
 * **Endpoint**: `POST /api/v1/requests`
 * **Request Body**:
 ```json
@@ -126,61 +152,77 @@ EKSetu/
     "annualIncome": 180000,
     "residenceState": "Telangana"
   },
-  "requestedData": [
-    "education",
-    "income",
-    "residence"
-  ]
+  "requestedData": ["education", "income", "residence"],
+  "purpose": "Scholarship Eligibility"
 }
 ```
-* **Response**:
+* **Response** (`200 OK` — No department calls executed):
 ```json
 {
-  "requestId": "REQ-20260929-8F42A",
+  "requestId": "REQ-20260930-8F42A",
   "service": "SCHOLARSHIP",
-  "status": "VERIFIED",
-  "applicant": {
-    "applicationId": "SCH-2026-001",
-    "name": "Sai Preetham"
-  },
-  "verifiedData": {
-    "education": {
-      "qualification": "Bachelor's Degree",
-      "studentStatus": "GRADUATE",
-      "status": "VERIFIED"
-    },
-    "income": {
-      "annualIncome": 180000,
-      "incomeStatus": "VALID",
-      "status": "VERIFIED"
-    },
-    "residence": {
-      "state": "Telangana",
-      "residenceStatus": "VALID",
-      "status": "VERIFIED"
-    }
-  },
-  "sources": [
-    { "department": "Education Department", "status": "VERIFIED", "verifiedAt": "2026-09-29T17:42:00.000Z" },
-    { "department": "Revenue Department", "status": "VERIFIED", "verifiedAt": "2026-09-29T17:42:00.050Z" },
-    { "department": "Residence Department", "status": "VERIFIED", "verifiedAt": "2026-09-29T17:42:00.100Z" }
-  ],
-  "trace": [
-    { "step": "REQUEST_CREATED", "message": "Verification request initiated...", "status": "SUCCESS", "timestamp": "..." },
-    { "step": "EDUCATION_DEPARTMENT_VERIFIED", "message": "Education Department API contacted...", "status": "SUCCESS", "timestamp": "..." },
-    { "step": "REVENUE_DEPARTMENT_VERIFIED", "message": "Revenue Department API contacted...", "status": "SUCCESS", "timestamp": "..." },
-    { "step": "RESIDENCE_DEPARTMENT_VERIFIED", "message": "Residence Department API contacted...", "status": "SUCCESS", "timestamp": "..." },
-    { "step": "DATA_AGGREGATED", "message": "Aggregated data from 3 department sources", "status": "SUCCESS", "timestamp": "..." },
-    { "step": "VERIFICATION_COMPLETE", "message": "EKSetu interoperability orchestration complete.", "status": "SUCCESS", "timestamp": "..." }
-  ],
-  "timestamp": "2026-09-29T17:42:00.120Z"
+  "serviceName": "Scholarship Service",
+  "status": "CONSENT_PENDING",
+  "consent": {
+    "purpose": "Scholarship Eligibility",
+    "requestedFields": ["education", "income", "residence"],
+    "consentType": "ONE_TIME",
+    "createdAt": "2026-09-30T00:00:00.000Z"
+  }
 }
 ```
 
-### 3.3 Mock Department Endpoints
-* **Education**: `POST /api/mock/education` or `GET /api/mock/education`
-* **Revenue**: `POST /api/mock/revenue` or `GET /api/mock/revenue`
-* **Residence**: `POST /api/mock/residence` or `GET /api/mock/residence`
+### 3.3 Step 2: Citizen Consent Decision
+* **Endpoint**: `POST /api/v1/consent`
+* **Request Body**:
+```json
+{
+  "requestId": "REQ-20260930-8F42A",
+  "decision": "ALLOW" // or "DENY"
+}
+```
+
+#### Outcome A: ALLOW / GRANTED
+```json
+{
+  "requestId": "REQ-20260930-8F42A",
+  "service": "SCHOLARSHIP",
+  "status": "VERIFIED",
+  "consentStatus": "GRANTED",
+  "authorizationStatus": "AUTHORIZED",
+  "dataReleased": true,
+  "verifiedData": {
+    "education": { "qualification": "Bachelor's Degree", "studentStatus": "GRADUATE", "status": "VERIFIED" },
+    "income": { "annualIncome": 180000, "incomeStatus": "VALID", "status": "VERIFIED" },
+    "residence": { "state": "Telangana", "residenceStatus": "VALID", "status": "VERIFIED" }
+  },
+  "sources": [
+    { "department": "Education Department", "status": "VERIFIED" },
+    { "department": "Revenue Department", "status": "VERIFIED" },
+    { "department": "Residence Department", "status": "VERIFIED" }
+  ]
+}
+```
+
+#### Outcome B: DENY / DENIED
+```json
+{
+  "requestId": "REQ-20260930-8F42A",
+  "service": "SCHOLARSHIP",
+  "status": "CONSENT_DENIED",
+  "consentStatus": "DENIED",
+  "authorizationStatus": "NOT_AUTHORIZED",
+  "dataReleased": false,
+  "trace": [
+    { "step": "CONSENT_DENIED", "message": "Citizen chose DENY. Interoperability request rejected." },
+    { "step": "NO_DATA_RELEASED", "message": "Zero departmental data was retrieved or released. Department APIs were not contacted." }
+  ]
+}
+```
+
+### 3.4 Request Lookup Endpoint
+* **Endpoint**: `GET /api/v1/requests/:requestId`
+* Returns request record, consent decision, and verification results.
 
 ---
 
@@ -189,17 +231,32 @@ EKSetu/
 Run the script in `backend/src/database/schema.sql` on Supabase:
 
 ```sql
+-- 1. verification_requests table
 CREATE TABLE IF NOT EXISTS verification_requests (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     request_id VARCHAR(64) UNIQUE NOT NULL,
     service VARCHAR(64) NOT NULL,
     applicant_data JSONB NOT NULL,
     requested_data TEXT[] NOT NULL,
-    status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+    status VARCHAR(32) NOT NULL DEFAULT 'CONSENT_PENDING',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     completed_at TIMESTAMPTZ
 );
 
+-- 2. consents table (V2 Trust & Citizen Authorization Layer)
+CREATE TABLE IF NOT EXISTS consents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_id VARCHAR(64) NOT NULL REFERENCES verification_requests(request_id) ON DELETE CASCADE,
+    service VARCHAR(64) NOT NULL,
+    purpose VARCHAR(255) NOT NULL,
+    requested_fields TEXT[] NOT NULL,
+    decision VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+    consent_type VARCHAR(32) NOT NULL DEFAULT 'ONE_TIME',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. verification_results table
 CREATE TABLE IF NOT EXISTS verification_results (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     request_id VARCHAR(64) NOT NULL REFERENCES verification_requests(request_id) ON DELETE CASCADE,
@@ -210,8 +267,6 @@ CREATE TABLE IF NOT EXISTS verification_results (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ```
-
-*Note: The backend has an automatic in-memory persistence fallback so local development and unit testing operate seamlessly even without active Supabase credentials.*
 
 ---
 
@@ -235,70 +290,32 @@ VITE_API_BASE_URL=http://localhost:5000
 
 ## 6. How to Run Locally
 
-### Step 1: Start Backend
-```bash
+### Start Backend
+```powershell
 cd backend
-npm install
 npm run dev
 ```
-Backend runs at `http://localhost:5000`.
+*Backend runs on `http://localhost:5000`.*
 
-### Step 2: Start Frontend
-```bash
+### Start Frontend
+```powershell
 cd frontend
-npm install
 npm run dev
 ```
-Frontend runs at `http://localhost:3000`.
+*Frontend runs on `http://localhost:3000`.*
 
 ---
 
 ## 7. Deployment Instructions
 
-### Deploying Backend to Railway
-1. Push the repository to GitHub.
+### Backend to Railway
+1. Push code to GitHub.
 2. In Railway, click **New Project** → **Deploy from GitHub repo**.
-3. Set the Root Directory to `/backend`.
-4. Configure Environment Variables:
-   - `PORT=5000`
-   - `SUPABASE_URL=<your-supabase-url>`
-   - `SUPABASE_SERVICE_ROLE_KEY=<your-supabase-key>`
-5. Deploy and copy your Railway URL (e.g. `https://eksetu-api.up.railway.app`).
+3. Set **Root Directory** to `backend`.
+4. Configure environment variables (`PORT=5000`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`).
 
-### Deploying Frontend to Vercel
-1. In Vercel, click **Add New** → **Project** → select the GitHub repository.
-2. Set Root Directory to `frontend`.
-3. Framework Preset: **Vite**.
-4. Configure Environment Variable:
-   - `VITE_API_BASE_URL=https://eksetu-api.up.railway.app`
-5. Click **Deploy**.
-
----
-
-## 8. Exact Steps to Test the Complete V1 Flow
-
-1. Open `http://localhost:3000` (or deployed URL).
-2. Click **Try Scholarship Verification** to navigate to `/scholarship`.
-3. Check the pre-filled applicant details:
-   - Full Name: `Sai Preetham`
-   - Application ID: `SCH-2026-001`
-   - Education Qualification: `Bachelor's Degree`
-   - Annual Income: `180000`
-   - Residence State: `Telangana`
-4. Click the prominent button: **Verify Automatically with EKSetu**.
-5. Observe the live orchestration progress:
-   - *✓ Request created*
-   - *✓ Education Department contacted*
-   - *✓ Revenue Department contacted*
-   - *✓ Residence Department contacted*
-   - *✓ Data aggregated*
-   - *✓ Verification complete*
-6. Review the verification outcome:
-   - Request ID generated (e.g. `REQ-20260929-8F42A`)
-   - Overall Status: `✓ VERIFIED`
-   - 3 Department Cards clearly showing source provenance:
-     - Education Department (Qualification: Bachelor's Degree, Status: ✓ Verified)
-     - Revenue Department (Annual Income: ₹1,80,000, Status: ✓ Verified)
-     - Residence Department (State: Telangana, Status: ✓ Verified)
-7. Click **View Request Details** to expand and review the internal interoperability sequence trace.
-8. (Optional Demonstration): Switch scenario dropdown to **Simulate Revenue Department Failure** and click verify to showcase `PARTIAL_VERIFIED` handling.
+### Frontend to Vercel
+1. In Vercel, click **Add New Project** → Select repository.
+2. Set **Root Directory** to `frontend`.
+3. Set `VITE_API_BASE_URL` to your Railway API URL.
+4. Deploy.

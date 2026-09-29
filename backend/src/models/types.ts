@@ -1,4 +1,14 @@
-export type VerificationStatus = 'VERIFIED' | 'PARTIAL_VERIFIED' | 'FAILED';
+export type VerificationStatus =
+  | 'CONSENT_PENDING'
+  | 'AUTHORIZED'
+  | 'CONSENT_DENIED'
+  | 'REQUEST_DENIED'
+  | 'VERIFIED'
+  | 'PARTIAL_VERIFIED'
+  | 'FAILED';
+
+export type ConsentDecision = 'PENDING' | 'GRANTED' | 'DENIED';
+export type ConsentType = 'ONE_TIME';
 
 export interface ApplicantInfo {
   applicationId: string;
@@ -13,10 +23,45 @@ export interface VerificationRequestInput {
   service: string;
   applicant: ApplicantInfo;
   requestedData: string[];
+  purpose?: string;
   simulateFailure?: {
     department?: 'education' | 'revenue' | 'residence';
     reason?: string;
   };
+}
+
+export interface ConsentRecord {
+  id?: string;
+  requestId: string;
+  service: string;
+  serviceName?: string;
+  purpose: string;
+  requestedFields: string[];
+  decision: ConsentDecision;
+  consentType: ConsentType;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface ConsentPendingResponse {
+  requestId: string;
+  service: string;
+  serviceName: string;
+  status: 'CONSENT_PENDING';
+  applicant: ApplicantInfo;
+  consent: {
+    purpose: string;
+    requestedFields: string[];
+    consentType: ConsentType;
+    createdAt: string;
+  };
+  trace: TraceStep[];
+  timestamp: string;
+}
+
+export interface ConsentDecisionInput {
+  requestId: string;
+  decision: 'ALLOW' | 'DENY' | 'GRANTED' | 'DENIED';
 }
 
 export interface MockDepartmentResponse<T = any> {
@@ -44,7 +89,7 @@ export interface ResidenceDepartmentData {
 
 export interface DepartmentSourceSummary {
   department: string;
-  status: 'VERIFIED' | 'FAILED';
+  status: 'VERIFIED' | 'FAILED' | 'NOT_REQUESTED';
   verifiedAt?: string;
   error?: string;
 }
@@ -60,8 +105,12 @@ export interface AggregatedVerificationResult {
   requestId: string;
   service: string;
   status: VerificationStatus;
-  applicant: ApplicantInfo;
-  verifiedData: {
+  consentStatus: ConsentDecision;
+  authorizationStatus: 'AUTHORIZED' | 'NOT_AUTHORIZED';
+  dataReleased: boolean;
+  consent?: ConsentRecord;
+  applicant?: ApplicantInfo;
+  verifiedData?: {
     education?: {
       qualification: string;
       studentStatus?: string;
@@ -78,7 +127,7 @@ export interface AggregatedVerificationResult {
       status: 'VERIFIED' | 'FAILED';
     };
   };
-  sources: DepartmentSourceSummary[];
+  sources?: DepartmentSourceSummary[];
   trace: TraceStep[];
   timestamp: string;
 }

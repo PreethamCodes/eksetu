@@ -1,5 +1,6 @@
 import {
   AggregatedVerificationResult,
+  ConsentPendingResponse,
   DepartmentSourceSummary,
   TraceStep,
   VerificationRequestInput,
@@ -10,46 +11,190 @@ import { EducationProvider } from '../providers/educationProvider';
 import { RevenueProvider } from '../providers/revenueProvider';
 import { ResidenceProvider } from '../providers/residenceProvider';
 import { DatabaseService } from './databaseService';
+import { ConsentService } from './consentService';
+import { AuthorizationService } from './authorizationService';
+
+// In-memory trace store for auditability of ongoing flows
+const activeRequestTraces: Map<string, TraceStep[]> = new Map();
 
 export class InteroperabilityService {
   /**
-   * Orchestrates the complete EKSetu Verification Lifecycle:
-   * 1. Generates Request ID
-   * 2. Saves initial record
-   * 3. Discovers & calls required department providers
-   * 4. Validates each department response
-   * 5. Aggregates data & builds request trace
-   * 6. Persists completed record to Supabase
+   * STEP 1: Initiates a Verification Request (V2 Gateway)
+   * - Validates requesting service against Service Registry
+   * - Generates unique Request ID
+   * - Creates consent request in PENDING state
+   * - DOES NOT call any department APIs (waits for citizen consent)
    */
-  static async processVerificationRequest(
+  static async initiateVerificationRequest(
     payload: VerificationRequestInput
-  ): Promise<AggregatedVerificationResult> {
+  ): Promise<ConsentPendingResponse> {
+    const serviceAuth = AuthorizationService.validateService(payload.service);
+    if (!serviceAuth.authorized) {
+      const err: any = new Error(`Service '${payload.service}' is not authorized`);
+      err.code = 'UNKNOWN_SERVICE';
+      err.statusCode = 403;
+      throw err;
+    }
+
     const requestId = generateRequestId();
-    const trace: TraceStep[] = [];
-    const sources: DepartmentSourceSummary[] = [];
     const timestamp = new Date().toISOString();
+    const trace: TraceStep[] = [];
 
     // 1. Trace: Request Created
     trace.push({
       step: 'REQUEST_CREATED',
       message: `Verification request initiated with ID ${requestId} for service ${payload.service}`,
       status: 'SUCCESS',
-      timestamp: new Date().toISOString()
+      timestamp
     });
 
-    // Save initial state
-    await DatabaseService.createRequestRecord(requestId, payload.service, payload);
+    // 2. Trace: Consent Pending
+    trace.push({
+      step: 'CONSENT_PENDING',
+      message: `Citizen consent required for ${serviceAuth.service?.serviceName} before departmental data can be released`,
+      status: 'INFO',
+      timestamp
+    });
 
-    // Prepare simulated failure checks
-    const failDept = payload.simulateFailure?.department;
+    activeRequestTraces.set(requestId, trace);
 
-    const requestedData = payload.requestedData || ['education', 'income', 'residence'];
+    // Save initial request record in CONSENT_PENDING state
+    await DatabaseService.createRequestRecord(requestId, payload.service, payload, 'CONSENT_PENDING');
+
+    // Create consent record
+    const requestedFields = payload.requestedData || ['education', 'income', 'residence'];
+    const purpose = payload.purpose || 'Scholarship Eligibility';
+    const consentRecord = await ConsentService.createConsentRequest(requestId, payload.service, requestedFields, purpose);
+
+    return {
+      requestId,
+      service: payload.service,
+      serviceName: serviceAuth.service?.serviceName || 'Government Service',
+      status: 'CONSENT_PENDING',
+      applicant: payload.applicant,
+      consent: {
+        purpose: consentRecord.purpose,
+        requestedFields: consentRecord.requestedFields,
+        consentType: consentRecord.consentType,
+        createdAt: consentRecord.createdAt
+      },
+      trace,
+      timestamp
+    };
+  }
+
+  /**
+   * STEP 2: Processes Citizen Consent Decision & Orchestrates Providers if Granted
+   */
+  static async processConsentDecision(
+    requestId: string,
+    rawDecision: string
+  ): Promise<AggregatedVerificationResult> {
+    // 1. Validate decision value
+    const normalizedDecision = rawDecision.toUpperCase();
+    if (!['ALLOW', 'DENY', 'GRANTED', 'DENIED'].includes(normalizedDecision)) {
+      const err: any = new Error(`Invalid consent decision: '${rawDecision}'. Allowed: ALLOW or DENY`);
+      err.code = 'INVALID_CONSENT';
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const isGranted = normalizedDecision === 'ALLOW' || normalizedDecision === 'GRANTED';
+    const decision = isGranted ? 'GRANTED' : 'DENIED';
+
+    // 2. Validate current request & consent state
+    const validation = await ConsentService.validateConsentState(requestId);
+    if (!validation.valid) {
+      const err: any = new Error(
+        validation.error === 'REQUEST_NOT_FOUND'
+          ? `Request ${requestId} not found`
+          : `Consent has already been processed for request ${requestId}`
+      );
+      err.code = validation.error;
+      err.statusCode = validation.code || 400;
+      throw err;
+    }
+
+    const requestRecord = validation.requestRecord;
+    const applicant = requestRecord.applicant_data || {};
+    const simulateFailure = applicant.simulateFailure;
+    const requestedData = requestRecord.requested_data || ['education', 'income', 'residence'];
+
+    // 3. Validate service authorization
+    const serviceAuth = AuthorizationService.validateService(requestRecord.service);
+    if (!serviceAuth.authorized) {
+      const err: any = new Error(`Service '${requestRecord.service}' is not authorized`);
+      err.code = 'UNKNOWN_SERVICE';
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const trace = activeRequestTraces.get(requestId) || [];
+    const timestamp = new Date().toISOString();
+
+    // 4. Record decision in consent service
+    const consent = await ConsentService.recordConsentDecision(requestId, decision);
+
+    // ==========================================
+    // CASE A: CITIZEN DENIED CONSENT
+    // ==========================================
+    if (!isGranted) {
+      trace.push({
+        step: 'CONSENT_DENIED',
+        message: 'Citizen chose DENY. Interoperability request rejected.',
+        status: 'FAILED',
+        timestamp
+      });
+      trace.push({
+        step: 'NO_DATA_RELEASED',
+        message: 'Zero departmental data was retrieved or released. Department APIs were not contacted.',
+        status: 'INFO',
+        timestamp
+      });
+
+      const deniedResult: AggregatedVerificationResult = {
+        requestId,
+        service: requestRecord.service,
+        status: 'CONSENT_DENIED',
+        consentStatus: 'DENIED',
+        authorizationStatus: 'NOT_AUTHORIZED',
+        dataReleased: false,
+        consent: consent || undefined,
+        applicant,
+        trace,
+        timestamp
+      };
+
+      await DatabaseService.updateRequestStatus(requestId, 'CONSENT_DENIED', timestamp);
+      return deniedResult;
+    }
+
+    // ==========================================
+    // CASE B: CITIZEN GRANTED CONSENT
+    // ==========================================
+    trace.push({
+      step: 'CONSENT_GRANTED',
+      message: 'Citizen granted one-time consent for Scholarship Eligibility verification',
+      status: 'SUCCESS',
+      timestamp
+    });
+
+    trace.push({
+      step: 'AUTHORIZATION_VERIFIED',
+      message: `Service ${requestRecord.service} authorization verified for requested scopes`,
+      status: 'SUCCESS',
+      timestamp
+    });
+
+    // NOW AND ONLY NOW: Call Department Providers
+    const sources: DepartmentSourceSummary[] = [];
     const verifiedData: AggregatedVerificationResult['verifiedData'] = {};
+    const failDept = simulateFailure?.department;
 
-    // 2. Contact Education Provider if requested
+    // Contact Education Provider
     if (requestedData.includes('education')) {
       const shouldFail = failDept === 'education';
-      const eduRes = await EducationProvider.verify(payload.applicant, shouldFail);
+      const eduRes = await EducationProvider.verify(applicant, shouldFail);
 
       sources.push({
         department: eduRes.department,
@@ -72,7 +217,7 @@ export class InteroperabilityService {
         });
       } else {
         verifiedData.education = {
-          qualification: payload.applicant.qualification || 'Unverified',
+          qualification: applicant.qualification || 'Unverified',
           status: 'FAILED'
         };
         trace.push({
@@ -84,10 +229,10 @@ export class InteroperabilityService {
       }
     }
 
-    // 3. Contact Revenue Provider if requested
+    // Contact Revenue Provider
     if (requestedData.includes('income')) {
       const shouldFail = failDept === 'revenue';
-      const revRes = await RevenueProvider.verify(payload.applicant, shouldFail);
+      const revRes = await RevenueProvider.verify(applicant, shouldFail);
 
       sources.push({
         department: revRes.department,
@@ -110,7 +255,7 @@ export class InteroperabilityService {
         });
       } else {
         verifiedData.income = {
-          annualIncome: payload.applicant.annualIncome || 0,
+          annualIncome: applicant.annualIncome || 0,
           status: 'FAILED'
         };
         trace.push({
@@ -122,10 +267,10 @@ export class InteroperabilityService {
       }
     }
 
-    // 4. Contact Residence Provider if requested
+    // Contact Residence Provider
     if (requestedData.includes('residence')) {
       const shouldFail = failDept === 'residence';
-      const resRes = await ResidenceProvider.verify(payload.applicant, shouldFail);
+      const resRes = await ResidenceProvider.verify(applicant, shouldFail);
 
       sources.push({
         department: resRes.department,
@@ -148,7 +293,7 @@ export class InteroperabilityService {
         });
       } else {
         verifiedData.residence = {
-          state: payload.applicant.residenceState || 'Unknown',
+          state: applicant.residenceState || 'Unknown',
           status: 'FAILED'
         };
         trace.push({
@@ -160,7 +305,7 @@ export class InteroperabilityService {
       }
     }
 
-    // 5. Compute overall verification status
+    // Compute overall verification status
     const totalSources = sources.length;
     const verifiedSourcesCount = sources.filter(s => s.status === 'VERIFIED').length;
 
@@ -171,7 +316,6 @@ export class InteroperabilityService {
       overallStatus = 'PARTIAL_VERIFIED';
     }
 
-    // 6. Trace: Data Aggregation & Finalization
     trace.push({
       step: 'DATA_AGGREGATED',
       message: `Aggregated data from ${totalSources} department sources (${verifiedSourcesCount}/${totalSources} verified)`,
@@ -188,16 +332,20 @@ export class InteroperabilityService {
 
     const result: AggregatedVerificationResult = {
       requestId,
-      service: payload.service,
+      service: requestRecord.service,
       status: overallStatus,
-      applicant: payload.applicant,
+      consentStatus: 'GRANTED',
+      authorizationStatus: 'AUTHORIZED',
+      dataReleased: true,
+      consent: consent || undefined,
+      applicant,
       verifiedData,
       sources,
       trace,
       timestamp
     };
 
-    // 7. Persist completed record
+    // Save final record to database
     await DatabaseService.completeRequestRecord(requestId, result);
 
     return result;
