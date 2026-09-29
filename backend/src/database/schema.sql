@@ -1,4 +1,4 @@
--- EKSetu PostgreSQL / Supabase Schema (V2: Consent & Authorization)
+-- EKSetu PostgreSQL / Supabase Schema (V3: Policy Engine & Data Minimization)
 
 -- 1. verification_requests table
 CREATE TABLE IF NOT EXISTS verification_requests (
@@ -25,7 +25,20 @@ CREATE TABLE IF NOT EXISTS consents (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. verification_results table
+-- 3. policies table (V3 Policy Engine & Data Minimization Rules)
+CREATE TABLE IF NOT EXISTS policies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    policy_id VARCHAR(64) UNIQUE NOT NULL,
+    service VARCHAR(64) NOT NULL,
+    purpose VARCHAR(255) NOT NULL,
+    version VARCHAR(32) NOT NULL DEFAULT '1.0',
+    status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+    rules JSONB NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. verification_results table
 CREATE TABLE IF NOT EXISTS verification_results (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     request_id VARCHAR(64) NOT NULL REFERENCES verification_requests(request_id) ON DELETE CASCADE,
@@ -39,4 +52,5 @@ CREATE TABLE IF NOT EXISTS verification_results (
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_requests_req_id ON verification_requests(request_id);
 CREATE INDEX IF NOT EXISTS idx_consents_req_id ON consents(request_id);
+CREATE INDEX IF NOT EXISTS idx_policies_lookup ON policies(service, purpose);
 CREATE INDEX IF NOT EXISTS idx_results_req_id ON verification_results(request_id);

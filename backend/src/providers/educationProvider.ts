@@ -1,4 +1,13 @@
-import { ApplicantInfo, EducationDepartmentData, MockDepartmentResponse } from '../models/types';
+import { ApplicantInfo, MockDepartmentResponse } from '../models/types';
+
+export interface ExtendedEducationData {
+  qualification: string;
+  studentStatus: string;
+  // Extraneous internal registry data (subject to data minimization filtering)
+  institution?: string;
+  cgpa?: number;
+  degreeCertificateHash?: string;
+}
 
 export class EducationProvider {
   static readonly departmentName = 'Education Department';
@@ -6,7 +15,10 @@ export class EducationProvider {
   /**
    * Verify applicant's education qualification against simulated Department of Higher Education registry
    */
-  static async verify(applicant: ApplicantInfo, shouldFail = false): Promise<MockDepartmentResponse<EducationDepartmentData>> {
+  static async verify(
+    applicant: ApplicantInfo,
+    shouldFail = false
+  ): Promise<MockDepartmentResponse<ExtendedEducationData>> {
     const verifiedAt = new Date().toISOString();
 
     if (shouldFail) {
@@ -18,7 +30,6 @@ export class EducationProvider {
       };
     }
 
-    // Realistic mock verification logic
     const qualification = applicant.qualification || "Bachelor's Degree";
     const studentStatus = 'GRADUATE';
 
@@ -27,7 +38,11 @@ export class EducationProvider {
       status: 'VERIFIED',
       data: {
         qualification,
-        studentStatus
+        studentStatus,
+        // Internal registry details that EKSetu policy engine must filter out
+        institution: 'National University of Technology',
+        cgpa: 8.85,
+        degreeCertificateHash: 'SHA256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069'
       },
       verifiedAt
     };

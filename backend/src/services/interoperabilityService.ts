@@ -13,14 +13,16 @@ import { ResidenceProvider } from '../providers/residenceProvider';
 import { DatabaseService } from './databaseService';
 import { ConsentService } from './consentService';
 import { AuthorizationService } from './authorizationService';
+import { PolicyService } from './policyService';
 
 // In-memory trace store for auditability of ongoing flows
 const activeRequestTraces: Map<string, TraceStep[]> = new Map();
 
 export class InteroperabilityService {
   /**
-   * STEP 1: Initiates a Verification Request (V2 Gateway)
+   * STEP 1: Initiates a Verification Request (V3 Gateway)
    * - Validates requesting service against Service Registry
+   * - Previews policy rules for transparency
    * - Generates unique Request ID
    * - Creates consent request in PENDING state
    * - DOES NOT call any department APIs (waits for citizen consent)
@@ -39,6 +41,12 @@ export class InteroperabilityService {
     const requestId = generateRequestId();
     const timestamp = new Date().toISOString();
     const trace: TraceStep[] = [];
+    const requestedFields = payload.requestedData || [
+      'education.qualification',
+      'income.annual_income',
+      'residence.state'
+    ];
+    const purpose = payload.purpose || 'Scholarship Eligibility';
 
     // 1. Trace: Request Created
     trace.push({
@@ -48,7 +56,16 @@ export class InteroperabilityService {
       timestamp
     });
 
-    // 2. Trace: Consent Pending
+    // 2. Policy Engine Preview
+    const policyPreview = PolicyService.evaluatePolicy(payload.service, purpose, requestedFields);
+    trace.push({
+      step: 'POLICY_PREVIEW',
+      message: `Policy ${policyPreview.policyId} v${policyPreview.version} loaded: ${policyPreview.totalAllowed} fields eligible, ${policyPreview.totalBlocked} fields subject to minimization`,
+      status: 'INFO',
+      timestamp
+    });
+
+    // 3. Trace: Consent Pending
     trace.push({
       step: 'CONSENT_PENDING',
       message: `Citizen consent required for ${serviceAuth.service?.serviceName} before departmental data can be released`,
@@ -62,8 +79,6 @@ export class InteroperabilityService {
     await DatabaseService.createRequestRecord(requestId, payload.service, payload, 'CONSENT_PENDING');
 
     // Create consent record
-    const requestedFields = payload.requestedData || ['education', 'income', 'residence'];
-    const purpose = payload.purpose || 'Scholarship Eligibility';
     const consentRecord = await ConsentService.createConsentRequest(requestId, payload.service, requestedFields, purpose);
 
     return {
@@ -78,13 +93,19 @@ export class InteroperabilityService {
         consentType: consentRecord.consentType,
         createdAt: consentRecord.createdAt
       },
+      policyPreview: {
+        allowedCount: policyPreview.totalAllowed,
+        blockedCount: policyPreview.totalBlocked,
+        allowedFields: policyPreview.allowedFields,
+        blockedFields: policyPreview.blockedFields.map(bf => bf.field)
+      },
       trace,
       timestamp
     };
   }
 
   /**
-   * STEP 2: Processes Citizen Consent Decision & Orchestrates Providers if Granted
+   * STEP 2: Processes Citizen Consent Decision, Enforces Policy Engine & Data Minimization
    */
   static async processConsentDecision(
     requestId: string,
@@ -118,7 +139,11 @@ export class InteroperabilityService {
     const requestRecord = validation.requestRecord;
     const applicant = requestRecord.applicant_data || {};
     const simulateFailure = applicant.simulateFailure;
-    const requestedData = requestRecord.requested_data || ['education', 'income', 'residence'];
+    const requestedData = requestRecord.requested_data || [
+      'education.qualification',
+      'income.annual_income',
+      'residence.state'
+    ];
 
     // 3. Validate service authorization
     const serviceAuth = AuthorizationService.validateService(requestRecord.service);
@@ -186,13 +211,60 @@ export class InteroperabilityService {
       timestamp
     });
 
-    // NOW AND ONLY NOW: Call Department Providers
+    // ==========================================
+    // STEP 3: V3 POLICY ENGINE EVALUATION
+    // ==========================================
+    const purpose = consent?.purpose || 'Scholarship Eligibility';
+    const policyResult = PolicyService.evaluatePolicy(requestRecord.service, purpose, requestedData);
+
+    trace.push({
+      step: 'POLICY_EVALUATED',
+      message: `Policy ${policyResult.policyId} decision: ${policyResult.decision} (${policyResult.totalAllowed} allowed, ${policyResult.totalBlocked} blocked by data minimization)`,
+      status: policyResult.decision === 'DENY' ? 'FAILED' : 'SUCCESS',
+      timestamp
+    });
+
+    // If policy engine denies all requested fields
+    if (policyResult.decision === 'DENY') {
+      trace.push({
+        step: 'POLICY_DENIED',
+        message: 'All requested fields were blocked by policy. Zero departmental data requested or released.',
+        status: 'FAILED',
+        timestamp
+      });
+
+      const policyDeniedResult: AggregatedVerificationResult = {
+        requestId,
+        service: requestRecord.service,
+        status: 'POLICY_DENIED',
+        consentStatus: 'GRANTED',
+        authorizationStatus: 'AUTHORIZED',
+        dataReleased: false,
+        policy: policyResult,
+        consent: consent || undefined,
+        applicant,
+        trace,
+        timestamp
+      };
+
+      await DatabaseService.updateRequestStatus(requestId, 'POLICY_DENIED', timestamp);
+      return policyDeniedResult;
+    }
+
+    // ==========================================
+    // STEP 4: REQUEST MINIMIZATION & PROVIDER CALLS
+    // ==========================================
+    // Only query department providers for fields explicitly approved by Policy Engine
     const sources: DepartmentSourceSummary[] = [];
     const verifiedData: AggregatedVerificationResult['verifiedData'] = {};
     const failDept = simulateFailure?.department;
 
-    // Contact Education Provider
-    if (requestedData.includes('education')) {
+    const isEduAllowed = policyResult.allowedFields.some(f => f.includes('education'));
+    const isIncomeAllowed = policyResult.allowedFields.some(f => f.includes('income'));
+    const isResidenceAllowed = policyResult.allowedFields.some(f => f.includes('residence'));
+
+    // 1. Education Department Provider (Only called if allowed)
+    if (isEduAllowed) {
       const shouldFail = failDept === 'education';
       const eduRes = await EducationProvider.verify(applicant, shouldFail);
 
@@ -204,14 +276,12 @@ export class InteroperabilityService {
       });
 
       if (eduRes.status === 'VERIFIED' && eduRes.data) {
-        verifiedData.education = {
-          qualification: eduRes.data.qualification,
-          studentStatus: eduRes.data.studentStatus,
-          status: 'VERIFIED'
-        };
+        // Enforce Response Minimization (strips institution, cgpa, certificate hash)
+        verifiedData.education = PolicyService.minimizeEducationData(eduRes.data, policyResult.allowedFields);
+
         trace.push({
           step: 'EDUCATION_DEPARTMENT_VERIFIED',
-          message: 'Education Department API contacted — Academic qualification verified',
+          message: 'Education Department API contacted — Academic qualification verified (response minimized)',
           status: 'SUCCESS',
           timestamp: eduRes.verifiedAt
         });
@@ -229,8 +299,8 @@ export class InteroperabilityService {
       }
     }
 
-    // Contact Revenue Provider
-    if (requestedData.includes('income')) {
+    // 2. Revenue Department Provider (Only called if allowed)
+    if (isIncomeAllowed) {
       const shouldFail = failDept === 'revenue';
       const revRes = await RevenueProvider.verify(applicant, shouldFail);
 
@@ -242,14 +312,12 @@ export class InteroperabilityService {
       });
 
       if (revRes.status === 'VERIFIED' && revRes.data) {
-        verifiedData.income = {
-          annualIncome: revRes.data.annualIncome,
-          incomeStatus: revRes.data.incomeStatus,
-          status: 'VERIFIED'
-        };
+        // Enforce Response Minimization (strips bankBalance, financialHistory, taxStatus, panCardRef)
+        verifiedData.income = PolicyService.minimizeIncomeData(revRes.data, policyResult.allowedFields);
+
         trace.push({
           step: 'REVENUE_DEPARTMENT_VERIFIED',
-          message: 'Revenue Department API contacted — Annual income validated',
+          message: 'Revenue Department API contacted — Annual income validated (bank balance & tax history filtered out)',
           status: 'SUCCESS',
           timestamp: revRes.verifiedAt
         });
@@ -267,8 +335,8 @@ export class InteroperabilityService {
       }
     }
 
-    // Contact Residence Provider
-    if (requestedData.includes('residence')) {
+    // 3. Residence Department Provider (Only called if allowed)
+    if (isResidenceAllowed) {
       const shouldFail = failDept === 'residence';
       const resRes = await ResidenceProvider.verify(applicant, shouldFail);
 
@@ -280,14 +348,12 @@ export class InteroperabilityService {
       });
 
       if (resRes.status === 'VERIFIED' && resRes.data) {
-        verifiedData.residence = {
-          state: resRes.data.state,
-          residenceStatus: resRes.data.residenceStatus,
-          status: 'VERIFIED'
-        };
+        // Enforce Response Minimization (strips fullAddress, propertyDetails, district)
+        verifiedData.residence = PolicyService.minimizeResidenceData(resRes.data, policyResult.allowedFields);
+
         trace.push({
           step: 'RESIDENCE_DEPARTMENT_VERIFIED',
-          message: 'Residence Department API contacted — State domicile validated',
+          message: 'Residence Department API contacted — State domicile validated (full address & property details filtered out)',
           status: 'SUCCESS',
           timestamp: resRes.verifiedAt
         });
@@ -317,9 +383,9 @@ export class InteroperabilityService {
     }
 
     trace.push({
-      step: 'DATA_AGGREGATED',
-      message: `Aggregated data from ${totalSources} department sources (${verifiedSourcesCount}/${totalSources} verified)`,
-      status: overallStatus === 'FAILED' ? 'FAILED' : 'SUCCESS',
+      step: 'DATA_MINIMIZATION_ENFORCED',
+      message: `Data minimization applied: ${policyResult.blockedFields.length} unauthorized/extraneous fields blocked from payload`,
+      status: 'SUCCESS',
       timestamp: new Date().toISOString()
     });
 
@@ -337,6 +403,7 @@ export class InteroperabilityService {
       consentStatus: 'GRANTED',
       authorizationStatus: 'AUTHORIZED',
       dataReleased: true,
+      policy: policyResult,
       consent: consent || undefined,
       applicant,
       verifiedData,

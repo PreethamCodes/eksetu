@@ -11,6 +11,7 @@ import { VerificationProgress } from '../components/VerificationProgress';
 import { RequestTrace } from '../components/RequestTrace';
 import { ConsentModal } from '../components/ConsentModal';
 import { ConsentDetailsCard } from '../components/ConsentDetailsCard';
+import { PolicyDecisionCard } from '../components/PolicyDecisionCard';
 import {
   FileText,
   ShieldCheck,
@@ -21,7 +22,10 @@ import {
   Sliders,
   ShieldAlert,
   Loader2,
-  ArrowLeft
+  ArrowLeft,
+  ShieldBan,
+  Lock,
+  XCircle
 } from 'lucide-react';
 
 const DEFAULT_FORM: ApplicantFormData = {
@@ -33,15 +37,21 @@ const DEFAULT_FORM: ApplicantFormData = {
   residenceState: 'Telangana'
 };
 
+type DemoScenario =
+  | 'data_minimization'
+  | 'standard'
+  | 'blocked_only'
+  | 'revenue_failure';
+
 export const ScholarshipPage: React.FC = () => {
   const [formData, setFormData] = useState<ApplicantFormData>(DEFAULT_FORM);
+  const [selectedScenario, setSelectedScenario] = useState<DemoScenario>('data_minimization');
   const [isInitiating, setIsInitiating] = useState(false);
   const [pendingConsent, setPendingConsent] = useState<ConsentPendingResponse | null>(null);
   const [isSubmittingConsent, setIsSubmittingConsent] = useState(false);
   const [isOrchestrating, setIsOrchestrating] = useState(false);
   const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [simulatedFailureDept, setSimulatedFailureDept] = useState<'none' | 'education' | 'revenue' | 'residence'>('none');
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -60,13 +70,33 @@ export const ScholarshipPage: React.FC = () => {
     setIsInitiating(true);
 
     try {
+      let requestedData = [
+        'education.qualification',
+        'income.annual_income',
+        'residence.state'
+      ];
+
+      if (selectedScenario === 'data_minimization') {
+        // V3 Primary Showcase: Request 5 fields (including 2 extraneous sensitive fields)
+        requestedData = [
+          'education.qualification',
+          'income.annual_income',
+          'residence.state',
+          'bank.balance',
+          'medical.history'
+        ];
+      } else if (selectedScenario === 'blocked_only') {
+        // Test 3: Request ONLY blocked fields
+        requestedData = ['bank.balance', 'medical.history'];
+      }
+
       const payload = {
         service: 'SCHOLARSHIP',
         applicant: formData,
-        requestedData: ['education', 'income', 'residence'],
+        requestedData,
         purpose: 'Scholarship Eligibility',
-        simulateFailure: simulatedFailureDept !== 'none' ? {
-          department: simulatedFailureDept,
+        simulateFailure: selectedScenario === 'revenue_failure' ? {
+          department: 'revenue' as const,
           reason: 'Simulated department registry outage / expired certificate demo'
         } : undefined
       };
@@ -130,7 +160,8 @@ export const ScholarshipPage: React.FC = () => {
     setIsOrchestrating(false);
   };
 
-  const isDenied = verificationResult?.status === 'CONSENT_DENIED';
+  const isConsentDenied = verificationResult?.status === 'CONSENT_DENIED';
+  const isPolicyDenied = verificationResult?.status === 'POLICY_DENIED';
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-8 py-8 sm:py-12">
@@ -148,14 +179,14 @@ export const ScholarshipPage: React.FC = () => {
                 </span>
                 <span className="text-slate-300">|</span>
                 <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                  EKSetu V2 Consent & Auth
+                  EKSetu V3 Policy & Minimization
                 </span>
               </div>
               <h2 className="text-xl sm:text-2xl font-black text-[#0F2642] tracking-tight mt-0.5">
                 National Merit Scholarship Scheme 2026
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Fictional demo service demonstrating citizen consent and cross-departmental interoperability.
+                Fictional demo service demonstrating citizen consent, policy engine evaluation, and data minimization.
               </p>
             </div>
           </div>
@@ -174,19 +205,27 @@ export const ScholarshipPage: React.FC = () => {
         <div className="mt-5 p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
           <div className="flex items-center space-x-2 text-slate-700 font-medium">
             <Sliders className="w-4 h-4 text-sky-700" />
-            <span>SIH Demo Scenario:</span>
+            <span className="font-bold">SIH V3 Demo Scenario:</span>
           </div>
           <div className="flex items-center space-x-2">
             <select
-              value={simulatedFailureDept}
-              onChange={e => setSimulatedFailureDept(e.target.value as any)}
+              value={selectedScenario}
+              onChange={e => setSelectedScenario(e.target.value as any)}
               disabled={isInitiating || pendingConsent !== null || isOrchestrating || verificationResult !== null}
               className="bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-60"
             >
-              <option value="none">Normal Verification (All 3 Departments Succeed)</option>
-              <option value="revenue">Simulate Revenue Department Failure (Partial Verification)</option>
-              <option value="education">Simulate Education Registry Mismatch</option>
-              <option value="residence">Simulate Residence Registry Timeout</option>
+              <option value="data_minimization">
+                Data Minimization Demo (5 Requested → 3 Allowed, 2 Blocked by Policy)
+              </option>
+              <option value="standard">
+                Standard Verification (3 Required Fields → Full ALLOW)
+              </option>
+              <option value="blocked_only">
+                Only Blocked Fields Demo (Bank Balance & Medical → POLICY_DENIED)
+              </option>
+              <option value="revenue_failure">
+                Simulate Revenue Registry Failure (Partial Provider Verification)
+              </option>
             </select>
           </div>
         </div>
@@ -308,7 +347,7 @@ export const ScholarshipPage: React.FC = () => {
             <div className="bg-sky-50/70 border border-sky-200 rounded-xl p-4 flex items-start space-x-3 text-xs text-sky-900">
               <Sparkles className="w-5 h-5 text-sky-700 flex-shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold">Citizen Consent Protected:</span> Clicking below will generate a secure verification request. You will be prompted with a dedicated EKSetu consent screen to explicitly allow or deny departmental data release.
+                <span className="font-bold">Citizen Consent & Policy Governed:</span> In accordance with V3 privacy-by-design standards, EKSetu prompts you for explicit consent and passes your request through the <strong>EKSetu Policy Engine</strong>, ensuring unneeded fields (such as bank balance or medical records) are automatically blocked.
               </div>
             </div>
 
@@ -351,7 +390,7 @@ export const ScholarshipPage: React.FC = () => {
       )}
 
       {/* STAGE 4A: Outcome - CONSENT DENIED */}
-      {isDenied && (
+      {isConsentDenied && (
         <div className="space-y-6 animate-in fade-in duration-300">
           <div className="bg-white rounded-2xl border border-rose-200 p-6 sm:p-8 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-rose-100 gap-4">
@@ -444,8 +483,76 @@ export const ScholarshipPage: React.FC = () => {
         </div>
       )}
 
-      {/* STAGE 4B: Outcome - VERIFICATION COMPLETE (when ALLOW chosen) */}
-      {verificationResult && !isDenied && (
+      {/* STAGE 4B: Outcome - POLICY DENIED (e.g. only blocked fields requested) */}
+      {isPolicyDenied && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          <div className="bg-white rounded-2xl border border-rose-200 p-6 sm:p-8 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-rose-100 gap-4">
+              <div className="flex items-start space-x-4">
+                <div className="p-3 bg-rose-50 text-rose-700 rounded-xl border border-rose-200">
+                  <ShieldBan className="w-7 h-7" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2 mb-1">
+                    <span className="text-xs font-bold text-rose-700 uppercase tracking-wider">
+                      Policy Enforcement
+                    </span>
+                  </div>
+                  <h3 className="text-2xl font-black text-[#0F2642]">
+                    Policy Denied — Data Minimization Block
+                  </h3>
+                  <p className="text-sm font-semibold text-slate-700 mt-1">
+                    All requested fields were rejected by EKSetu Policy Engine.
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Zero government department data was released because the requested fields are not authorized for purpose 'Scholarship Eligibility'.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:items-end space-y-1.5">
+                <span className="text-xs text-slate-400 font-semibold uppercase">Request Status</span>
+                <StatusBadge status="POLICY_DENIED" size="lg" />
+                <div className="text-[11px] font-mono text-slate-500 mt-1">
+                  Request ID: <span className="font-bold text-[#0F2642]">{verificationResult?.requestId}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Policy Evaluation Details */}
+            {verificationResult?.policy && (
+              <div className="mt-6">
+                <PolicyDecisionCard policy={verificationResult.policy} />
+              </div>
+            )}
+
+            {/* Request Trace */}
+            {verificationResult?.trace && (
+              <RequestTrace
+                trace={verificationResult.trace}
+                requestId={verificationResult.requestId}
+              />
+            )}
+
+            {/* Return Action */}
+            <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-xs text-slate-500">
+                The requesting service exceeded authorized purpose boundaries.
+              </span>
+              <button
+                onClick={handleReset}
+                className="px-6 py-2.5 rounded-xl bg-[#0F2642] hover:bg-[#1A4472] text-white font-bold text-xs flex items-center space-x-2 transition-colors shadow-sm"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Return to Application</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STAGE 4C: Outcome - VERIFICATION COMPLETE (ALLOW / PARTIAL_ALLOW) */}
+      {verificationResult && !isConsentDenied && !isPolicyDenied && (
         <div className="space-y-6 animate-in fade-in duration-300">
           <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-slate-100 gap-4">
@@ -474,10 +581,17 @@ export const ScholarshipPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Department Source Cards Grid */}
-            <div className="mt-6">
+            {/* V3 Key Feature: Policy Decision & Data Minimization Card */}
+            {verificationResult.policy && (
+              <div className="mt-6">
+                <PolicyDecisionCard policy={verificationResult.policy} />
+              </div>
+            )}
+
+            {/* Department Source Cards Grid (Released Allowed Data) */}
+            <div className="mt-8">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4">
-                Verified Department Data Sources
+                Verified Information (Released to Scholarship Portal)
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 {/* 1. Education Department Card */}
@@ -518,6 +632,41 @@ export const ScholarshipPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Blocked Information (Protected by Policy) */}
+            {verificationResult.policy && verificationResult.policy.blockedFields.length > 0 && (
+              <div className="mt-8 p-5 bg-rose-50/50 border border-rose-200 rounded-xl">
+                <div className="flex items-center space-x-2 text-rose-900 font-bold text-xs uppercase tracking-wider mb-2">
+                  <Lock className="w-4 h-4 text-rose-600" />
+                  <span>Protected Information (Blocked by EKSetu Policy Engine)</span>
+                </div>
+                <p className="text-xs text-slate-600 mb-4">
+                  The requesting service declared these fields in its request, but EKSetu verified they are not required for Scholarship Eligibility and blocked them from release:
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {verificationResult.policy.blockedFields.map((bf, idx) => (
+                    <div key={idx} className="bg-white p-3.5 rounded-lg border border-rose-200 flex items-start space-x-3">
+                      <XCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <span className="font-bold text-xs text-slate-900 font-mono">{bf.field}</span>
+                          <span className="text-[10px] bg-rose-100 text-rose-800 font-semibold px-1.5 py-0.5 rounded">
+                            BLOCKED
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-slate-500 block mt-0.5">
+                          Classification: <strong className="text-slate-700">{bf.classification}</strong>
+                        </span>
+                        <span className="text-[11px] text-rose-700 block mt-0.5 font-medium">
+                          Reason: {bf.reason.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Consent Details Card */}
             <ConsentDetailsCard
               consent={verificationResult.consent}
@@ -537,7 +686,7 @@ export const ScholarshipPage: React.FC = () => {
             <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex items-center space-x-2 text-xs text-slate-500">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Verified attributes are securely bound to Scholarship Application {formData.applicationId}</span>
+                <span>Only minimized verified attributes released to Scholarship Application {formData.applicationId}</span>
               </div>
 
               <button
@@ -545,7 +694,7 @@ export const ScholarshipPage: React.FC = () => {
                 className="w-full sm:w-auto px-5 py-2.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold text-xs flex items-center justify-center space-x-2 transition-colors"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset / Test Another Record</span>
+                <span>Reset / Test Another Scenario</span>
               </button>
             </div>
           </div>

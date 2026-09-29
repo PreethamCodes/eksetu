@@ -1,8 +1,11 @@
+import { PolicyEvaluationResult } from '../policies/policyTypes';
+
 export type VerificationStatus =
   | 'CONSENT_PENDING'
   | 'AUTHORIZED'
   | 'CONSENT_DENIED'
   | 'REQUEST_DENIED'
+  | 'POLICY_DENIED'
   | 'VERIFIED'
   | 'PARTIAL_VERIFIED'
   | 'FAILED';
@@ -54,6 +57,12 @@ export interface ConsentPendingResponse {
     requestedFields: string[];
     consentType: ConsentType;
     createdAt: string;
+  };
+  policyPreview?: {
+    allowedCount: number;
+    blockedCount: number;
+    allowedFields: string[];
+    blockedFields: string[];
   };
   trace: TraceStep[];
   timestamp: string;
@@ -108,6 +117,7 @@ export interface AggregatedVerificationResult {
   consentStatus: ConsentDecision;
   authorizationStatus: 'AUTHORIZED' | 'NOT_AUTHORIZED';
   dataReleased: boolean;
+  policy?: PolicyEvaluationResult;
   consent?: ConsentRecord;
   applicant?: ApplicantInfo;
   verifiedData?: {

@@ -1,4 +1,14 @@
-import { ApplicantInfo, RevenueDepartmentData, MockDepartmentResponse } from '../models/types';
+import { ApplicantInfo, MockDepartmentResponse } from '../models/types';
+
+export interface ExtendedRevenueData {
+  annualIncome: number;
+  incomeStatus: string;
+  // Extraneous internal registry data (subject to strict data minimization filtering)
+  bankBalance?: number;
+  financialHistory?: string;
+  taxStatus?: string;
+  panCardRef?: string;
+}
 
 export class RevenueProvider {
   static readonly departmentName = 'Revenue Department';
@@ -6,7 +16,10 @@ export class RevenueProvider {
   /**
    * Verify applicant's annual income certificate against simulated State Revenue Department registry
    */
-  static async verify(applicant: ApplicantInfo, shouldFail = false): Promise<MockDepartmentResponse<RevenueDepartmentData>> {
+  static async verify(
+    applicant: ApplicantInfo,
+    shouldFail = false
+  ): Promise<MockDepartmentResponse<ExtendedRevenueData>> {
     const verifiedAt = new Date().toISOString();
 
     if (shouldFail) {
@@ -26,7 +39,12 @@ export class RevenueProvider {
       status: 'VERIFIED',
       data: {
         annualIncome,
-        incomeStatus
+        incomeStatus,
+        // Sensitive internal revenue attributes that EKSetu policy engine must filter out
+        bankBalance: 95000,
+        financialHistory: 'Clean - 0 Defaults',
+        taxStatus: 'COMPLIANT_FY25',
+        panCardRef: 'ABCDE1234F'
       },
       verifiedAt
     };
