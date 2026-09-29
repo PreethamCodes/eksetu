@@ -113,6 +113,47 @@ export interface TraceStep {
   timestamp: string;
 }
 
+export type AuditEventType =
+  | 'REQUEST_CREATED'
+  | 'CONSENT_GRANTED'
+  | 'CONSENT_DENIED'
+  | 'AUTHORIZATION_CHECKED'
+  | 'AUTHORIZATION_FAILED'
+  | 'POLICY_EVALUATED'
+  | 'POLICY_DENIED'
+  | 'REQUEST_MINIMIZED'
+  | 'PROVIDER_REQUESTED'
+  | 'PROVIDER_VERIFIED'
+  | 'PROVIDER_VERIFICATION_FAILED'
+  | 'PROVIDER_ERROR'
+  | 'RESPONSE_MINIMIZED'
+  | 'VERIFICATION_COMPLETED'
+  | 'VERIFICATION_PARTIAL'
+  | 'VERIFICATION_FAILED'
+  | 'RESULT_DELIVERED';
+
+export interface AuditEvent {
+  id: string;
+  requestId: string;
+  eventType: AuditEventType;
+  actorType?: 'CITIZEN' | 'SERVICE' | 'GATEWAY' | 'PROVIDER' | 'SYSTEM';
+  actorId?: string;
+  service?: string;
+  provider?: string;
+  status: string;
+  metadata?: Record<string, any>;
+  createdAt: string;
+  timestamp?: string;
+}
+
+export interface ProvenanceRecord {
+  field: string;
+  provider: 'EDUCATION' | 'REVENUE' | 'RESIDENCE';
+  providerName: string;
+  status: 'VERIFIED' | 'FAILED';
+  verifiedAt: string;
+}
+
 export interface AggregatedVerificationResult {
   requestId: string;
   service: string;
@@ -122,6 +163,8 @@ export interface AggregatedVerificationResult {
   authorizationStatus: 'AUTHORIZED' | 'NOT_AUTHORIZED';
   dataReleased: boolean;
   data?: Record<string, any>;
+  provenance?: ProvenanceRecord[];
+  auditEvents?: AuditEvent[];
   policy?: PolicyEvaluationResult;
   consent?: ConsentRecord;
   applicant?: ApplicantInfo;

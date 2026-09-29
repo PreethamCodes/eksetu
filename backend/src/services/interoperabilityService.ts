@@ -1,5 +1,6 @@
 import {
   AggregatedVerificationResult,
+  AuditEventType,
   ConsentPendingResponse,
   DepartmentSourceSummary,
   TraceStep,
@@ -14,6 +15,7 @@ import { DatabaseService } from './databaseService';
 import { ConsentService } from './consentService';
 import { AuthorizationService } from './authorizationService';
 import { PolicyService } from './policyService';
+import { AuditService } from './auditService';
 
 // In-memory trace store for auditability of ongoing flows
 const activeRequestTraces: Map<string, TraceStep[]> = new Map();
@@ -30,14 +32,6 @@ export class InteroperabilityService {
   static async initiateVerificationRequest(
     payload: VerificationRequestInput
   ): Promise<ConsentPendingResponse> {
-    const serviceAuth = AuthorizationService.validateService(payload.service);
-    if (!serviceAuth.authorized) {
-      const err: any = new Error(`Service '${payload.service}' is not authorized`);
-      err.code = 'UNKNOWN_SERVICE';
-      err.statusCode = 403;
-      throw err;
-    }
-
     const requestId = generateRequestId();
     const timestamp = new Date().toISOString();
     const trace: TraceStep[] = [];
@@ -48,12 +42,41 @@ export class InteroperabilityService {
     ];
     const purpose = payload.purpose || 'Scholarship Eligibility';
 
+    const serviceAuth = AuthorizationService.validateService(payload.service);
+    if (!serviceAuth.authorized) {
+      await AuditService.recordEvent({
+        requestId,
+        eventType: 'AUTHORIZATION_FAILED',
+        service: payload.service,
+        status: 'FAILED',
+        metadata: { reason: `Service '${payload.service}' is not authorized` }
+      });
+      const err: any = new Error(`Service '${payload.service}' is not authorized`);
+      err.code = 'UNKNOWN_SERVICE';
+      err.statusCode = 403;
+      err.requestId = requestId;
+      throw err;
+    }
+
     // 1. Trace: Request Created
     trace.push({
       step: 'REQUEST_CREATED',
       message: `Verification request initiated with ID ${requestId} for service ${payload.service}`,
       status: 'SUCCESS',
       timestamp
+    });
+
+    // V4: Audit Event REQUEST_CREATED
+    await AuditService.recordEvent({
+      requestId,
+      eventType: 'REQUEST_CREATED',
+      service: payload.service,
+      status: 'CONSENT_PENDING',
+      metadata: {
+        service: payload.service,
+        purpose,
+        requestedFields
+      }
     });
 
     // 2. Policy Engine Preview
@@ -138,7 +161,7 @@ export class InteroperabilityService {
 
     const requestRecord = validation.requestRecord;
     const applicant = requestRecord.applicant_data || {};
-    const simulateFailure = applicant.simulateFailure;
+    const simulateFailure = applicant.simulateFailure || (requestRecord as any).simulateFailure || (requestRecord as any).simulate_failure;
     const requestedData = requestRecord.requested_data || [
       'education.qualification',
       'income.annual_income',
@@ -164,6 +187,21 @@ export class InteroperabilityService {
         timestamp
       });
 
+      await AuditService.recordEvent({
+        requestId,
+        eventType: 'AUTHORIZATION_FAILED',
+        service: requestRecord.service,
+        status: 'FAILED',
+        metadata: { reason: `Service '${requestRecord.service}' is not authorized` }
+      });
+      await AuditService.recordEvent({
+        requestId,
+        eventType: 'VERIFICATION_FAILED',
+        service: requestRecord.service,
+        status: 'FAILED',
+        metadata: { reason: 'Authorization failed' }
+      });
+
       const authFailedResult: AggregatedVerificationResult = {
         requestId,
         service: requestRecord.service,
@@ -171,12 +209,14 @@ export class InteroperabilityService {
         consentStatus: 'GRANTED',
         authorizationStatus: 'NOT_AUTHORIZED',
         dataReleased: false,
+        provenance: [],
+        auditEvents: await AuditService.getEventsByRequestId(requestId),
         applicant,
         trace,
         timestamp
       };
 
-      await DatabaseService.updateRequestStatus(requestId, 'AUTHORIZATION_FAILED', timestamp);
+      await DatabaseService.updateRequestStatus(requestId, 'AUTHORIZATION_FAILED', timestamp, authFailedResult);
       return authFailedResult;
     }
 
@@ -200,6 +240,21 @@ export class InteroperabilityService {
         timestamp
       });
 
+      await AuditService.recordEvent({
+        requestId,
+        eventType: 'CONSENT_DENIED',
+        service: requestRecord.service,
+        status: 'DENIED',
+        metadata: { reason: 'Citizen denied consent' }
+      });
+      await AuditService.recordEvent({
+        requestId,
+        eventType: 'VERIFICATION_FAILED',
+        service: requestRecord.service,
+        status: 'FAILED',
+        metadata: { reason: 'Consent denied by citizen' }
+      });
+
       const deniedResult: AggregatedVerificationResult = {
         requestId,
         service: requestRecord.service,
@@ -207,13 +262,15 @@ export class InteroperabilityService {
         consentStatus: 'DENIED',
         authorizationStatus: 'NOT_AUTHORIZED',
         dataReleased: false,
+        provenance: [],
+        auditEvents: await AuditService.getEventsByRequestId(requestId),
         consent: consent || undefined,
         applicant,
         trace,
         timestamp
       };
 
-      await DatabaseService.updateRequestStatus(requestId, 'CONSENT_DENIED', timestamp);
+      await DatabaseService.updateRequestStatus(requestId, 'CONSENT_DENIED', timestamp, deniedResult);
       return deniedResult;
     }
 
@@ -234,6 +291,22 @@ export class InteroperabilityService {
       timestamp
     });
 
+    await AuditService.recordEvent({
+      requestId,
+      eventType: 'CONSENT_GRANTED',
+      service: requestRecord.service,
+      status: 'GRANTED',
+      metadata: { consentType: consent?.consentType || 'ONE_TIME', purpose: consent?.purpose }
+    });
+
+    await AuditService.recordEvent({
+      requestId,
+      eventType: 'AUTHORIZATION_CHECKED',
+      service: requestRecord.service,
+      status: 'AUTHORIZED',
+      metadata: { service: requestRecord.service, scopes: serviceAuth.service?.allowedScopes }
+    });
+
     // ==========================================
     // STEP 3: V3 POLICY ENGINE EVALUATION
     // ==========================================
@@ -247,6 +320,21 @@ export class InteroperabilityService {
       timestamp
     });
 
+    await AuditService.recordEvent({
+      requestId,
+      eventType: 'POLICY_EVALUATED',
+      service: requestRecord.service,
+      status: policyResult.decision === 'DENY' ? 'DENIED' : 'ALLOWED',
+      metadata: {
+        policyId: policyResult.policyId,
+        version: policyResult.version,
+        totalAllowed: policyResult.totalAllowed,
+        totalBlocked: policyResult.totalBlocked,
+        allowedFields: policyResult.allowedFields,
+        blockedFields: policyResult.blockedFields.map(bf => bf.field)
+      }
+    });
+
     // If policy engine denies all requested fields
     if (policyResult.decision === 'DENY') {
       trace.push({
@@ -254,6 +342,21 @@ export class InteroperabilityService {
         message: 'All requested fields were blocked by policy. Zero departmental data requested or released.',
         status: 'FAILED',
         timestamp
+      });
+
+      await AuditService.recordEvent({
+        requestId,
+        eventType: 'POLICY_DENIED',
+        service: requestRecord.service,
+        status: 'DENIED',
+        metadata: { reason: 'All requested fields blocked by policy' }
+      });
+      await AuditService.recordEvent({
+        requestId,
+        eventType: 'VERIFICATION_FAILED',
+        service: requestRecord.service,
+        status: 'FAILED',
+        metadata: { reason: 'Policy denied all requested fields' }
       });
 
       const policyDeniedResult: AggregatedVerificationResult = {
@@ -264,6 +367,8 @@ export class InteroperabilityService {
         consentStatus: 'GRANTED',
         authorizationStatus: 'AUTHORIZED',
         dataReleased: false,
+        provenance: [],
+        auditEvents: await AuditService.getEventsByRequestId(requestId),
         policy: policyResult,
         consent: consent || undefined,
         applicant,
@@ -271,7 +376,7 @@ export class InteroperabilityService {
         timestamp
       };
 
-      await DatabaseService.updateRequestStatus(requestId, 'POLICY_DENIED', timestamp);
+      await DatabaseService.updateRequestStatus(requestId, 'POLICY_DENIED', timestamp, policyDeniedResult);
       return policyDeniedResult;
     }
 
@@ -279,6 +384,17 @@ export class InteroperabilityService {
     // STEP 4: REQUEST MINIMIZATION & PROVIDER CALLS
     // ==========================================
     // Only query department providers for fields explicitly approved by Policy Engine
+    await AuditService.recordEvent({
+      requestId,
+      eventType: 'REQUEST_MINIMIZED',
+      service: requestRecord.service,
+      status: 'SUCCESS',
+      metadata: {
+        allowedFields: policyResult.allowedFields,
+        blockedFields: policyResult.blockedFields.map(bf => bf.field)
+      }
+    });
+
     const sources: DepartmentSourceSummary[] = [];
     const verifiedData: AggregatedVerificationResult['verifiedData'] = {};
     const failDept = simulateFailure?.department;
@@ -298,6 +414,15 @@ export class InteroperabilityService {
 
     // 1. Education Department Provider (Only called if allowed)
     if (isEduAllowed) {
+      await AuditService.recordEvent({
+        requestId,
+        eventType: 'PROVIDER_REQUESTED',
+        service: requestRecord.service,
+        provider: 'EDUCATION',
+        status: 'PENDING',
+        metadata: { department: 'Education Department' }
+      });
+
       const shouldFail = failDept === 'education';
       const eduRes = await EducationProvider.verify(applicant, shouldFail);
 
@@ -311,6 +436,15 @@ export class InteroperabilityService {
       if (eduRes.status === 'VERIFIED' && eduRes.data) {
         // Enforce Response Minimization (strips institution, cgpa, certificate hash)
         verifiedData.education = PolicyService.minimizeEducationData(eduRes.data, policyResult.allowedFields);
+
+        await AuditService.recordEvent({
+          requestId,
+          eventType: 'PROVIDER_VERIFIED',
+          service: requestRecord.service,
+          provider: 'EDUCATION',
+          status: 'VERIFIED',
+          metadata: { department: 'Education Department' }
+        });
 
         trace.push({
           step: 'EDUCATION_DEPARTMENT_VERIFIED',
@@ -326,6 +460,16 @@ export class InteroperabilityService {
           status: 'FAILED',
           verified: false
         };
+
+        await AuditService.recordEvent({
+          requestId,
+          eventType: 'PROVIDER_VERIFICATION_FAILED',
+          service: requestRecord.service,
+          provider: 'EDUCATION',
+          status: 'FAILED',
+          metadata: { department: 'Education Department', error: eduRes.error || 'Record unverified' }
+        });
+
         trace.push({
           step: 'EDUCATION_DEPARTMENT_FAILED',
           message: `Education Department API returned verification failure: ${eduRes.error || 'Record unverified'}`,
@@ -337,6 +481,15 @@ export class InteroperabilityService {
 
     // 2. Revenue Department Provider (Only called if allowed)
     if (isIncomeAllowed) {
+      await AuditService.recordEvent({
+        requestId,
+        eventType: 'PROVIDER_REQUESTED',
+        service: requestRecord.service,
+        provider: 'REVENUE',
+        status: 'PENDING',
+        metadata: { department: 'Revenue Department' }
+      });
+
       const shouldFail = failDept === 'revenue';
       const revRes = await RevenueProvider.verify(applicant, shouldFail);
 
@@ -351,6 +504,15 @@ export class InteroperabilityService {
         // Enforce Response Minimization (strips bankBalance, financialHistory, taxStatus, panCardRef)
         verifiedData.income = PolicyService.minimizeIncomeData(revRes.data, policyResult.allowedFields);
 
+        await AuditService.recordEvent({
+          requestId,
+          eventType: 'PROVIDER_VERIFIED',
+          service: requestRecord.service,
+          provider: 'REVENUE',
+          status: 'VERIFIED',
+          metadata: { department: 'Revenue Department' }
+        });
+
         trace.push({
           step: 'REVENUE_DEPARTMENT_VERIFIED',
           message: 'Revenue Department API contacted — Annual income record verified by department (extraneous fields stripped)',
@@ -363,6 +525,16 @@ export class InteroperabilityService {
           status: 'FAILED',
           verified: false
         };
+
+        await AuditService.recordEvent({
+          requestId,
+          eventType: 'PROVIDER_VERIFICATION_FAILED',
+          service: requestRecord.service,
+          provider: 'REVENUE',
+          status: 'FAILED',
+          metadata: { department: 'Revenue Department', error: revRes.error || 'Record unverified' }
+        });
+
         trace.push({
           step: 'REVENUE_DEPARTMENT_FAILED',
           message: `Revenue Department API returned verification failure: ${revRes.error || 'Record unverified'}`,
@@ -374,6 +546,15 @@ export class InteroperabilityService {
 
     // 3. Residence Department Provider (Only called if allowed)
     if (isResidenceAllowed) {
+      await AuditService.recordEvent({
+        requestId,
+        eventType: 'PROVIDER_REQUESTED',
+        service: requestRecord.service,
+        provider: 'RESIDENCE',
+        status: 'PENDING',
+        metadata: { department: 'Residence Department' }
+      });
+
       const shouldFail = failDept === 'residence';
       const resRes = await ResidenceProvider.verify(applicant, shouldFail);
 
@@ -388,6 +569,15 @@ export class InteroperabilityService {
         // Enforce Response Minimization (strips fullAddress, propertyDetails, district)
         verifiedData.residence = PolicyService.minimizeResidenceData(resRes.data, policyResult.allowedFields);
 
+        await AuditService.recordEvent({
+          requestId,
+          eventType: 'PROVIDER_VERIFIED',
+          service: requestRecord.service,
+          provider: 'RESIDENCE',
+          status: 'VERIFIED',
+          metadata: { department: 'Residence Department' }
+        });
+
         trace.push({
           step: 'RESIDENCE_DEPARTMENT_VERIFIED',
           message: 'Residence Department API contacted — State domicile record verified by department (extraneous fields stripped)',
@@ -401,6 +591,16 @@ export class InteroperabilityService {
           status: 'FAILED',
           verified: false
         };
+
+        await AuditService.recordEvent({
+          requestId,
+          eventType: 'PROVIDER_VERIFICATION_FAILED',
+          service: requestRecord.service,
+          provider: 'RESIDENCE',
+          status: 'FAILED',
+          metadata: { department: 'Residence Department', error: resRes.error || 'Record unverified' }
+        });
+
         trace.push({
           step: 'RESIDENCE_DEPARTMENT_FAILED',
           message: `Residence Department API returned verification failure: ${resRes.error || 'Record unverified'}`,
@@ -434,6 +634,39 @@ export class InteroperabilityService {
       policyResult.allowedFields
     );
 
+    await AuditService.recordEvent({
+      requestId,
+      eventType: 'RESPONSE_MINIMIZED',
+      service: requestRecord.service,
+      status: 'SUCCESS',
+      metadata: {
+        retainedFields: Object.keys(dataPackage || {})
+      }
+    });
+
+    let finalEventType: AuditEventType = 'VERIFICATION_COMPLETED';
+    if (overallStatus === 'VERIFICATION_FAILED') {
+      finalEventType = 'VERIFICATION_FAILED';
+    } else if (overallStatus === 'PARTIAL_VERIFIED') {
+      finalEventType = 'VERIFICATION_PARTIAL';
+    }
+
+    await AuditService.recordEvent({
+      requestId,
+      eventType: finalEventType,
+      service: requestRecord.service,
+      status: overallStatus,
+      metadata: { totalSources, verifiedSourcesCount }
+    });
+
+    await AuditService.recordEvent({
+      requestId,
+      eventType: 'RESULT_DELIVERED',
+      service: requestRecord.service,
+      status: 'DELIVERED',
+      metadata: { deliveredFields: Object.keys(dataPackage || {}) }
+    });
+
     trace.push({
       step: 'DATA_MINIMIZATION_ENFORCED',
       message: `Data minimization applied: unauthorized and extraneous provider fields stripped by policy engine`,
@@ -448,6 +681,9 @@ export class InteroperabilityService {
       timestamp: new Date().toISOString()
     });
 
+    const provenance = AuditService.buildProvenance(dataPackage, sources);
+    const auditEvents = await AuditService.getEventsByRequestId(requestId);
+
     const result: AggregatedVerificationResult = {
       requestId,
       service: requestRecord.service,
@@ -457,6 +693,8 @@ export class InteroperabilityService {
       authorizationStatus: 'AUTHORIZED',
       dataReleased: overallStatus !== 'VERIFICATION_FAILED',
       data: dataPackage,
+      provenance,
+      auditEvents,
       policy: policyResult,
       consent: consent || undefined,
       applicant,

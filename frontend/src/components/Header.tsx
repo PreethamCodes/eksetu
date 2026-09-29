@@ -59,7 +59,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
             <div className="flex items-center space-x-2">
               <h1 className="text-xl font-bold tracking-tight text-[#0F2642]">EKSetu</h1>
               <span className="text-xs bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded border border-emerald-200">
-                V3 Policy & Minimization
+                V5 Citizen Transparency
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium">Government Interoperability Platform</p>
@@ -87,6 +87,17 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
           >
             <Activity className="w-3.5 h-3.5" />
             <span>Scholarship Portal</span>
+          </button>
+          <button
+            onClick={() => onNavigate('/transparency')}
+            className={`px-3.5 py-1.5 rounded text-sm font-medium transition-colors flex items-center space-x-1.5 ${
+              currentPath === '/transparency'
+                ? 'bg-emerald-800 text-white shadow-sm'
+                : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>My Data Usage</span>
           </button>
         </nav>
       </div>

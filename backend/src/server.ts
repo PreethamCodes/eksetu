@@ -29,20 +29,27 @@ app.get('/', (req, res) => {
   res.json({
     message: 'EKSetu Government Interoperability Gateway API',
     tagline: 'Share Proof, Not Databases.',
-    version: '3.0.0',
+    version: '5.0.0',
     status: 'ACTIVE',
     capabilities: [
       'INTEROPERABILITY',
       'CITIZEN_CONSENT',
       'AUTHORIZATION',
       'POLICY_ENGINE',
-      'DATA_MINIMIZATION'
+      'DATA_MINIMIZATION',
+      'PROVENANCE',
+      'AUDIT_TRAIL',
+      'CITIZEN_TRANSPARENCY'
     ],
     endpoints: {
       health: '/api/health',
       requests: '/api/v1/requests',
       consent: '/api/v1/consent',
       policyEvaluate: '/api/v1/policy/evaluate',
+      requestAudit: '/api/v1/requests/:requestId/audit',
+      requestProvenance: '/api/v1/requests/:requestId/provenance',
+      citizenRequests: '/api/v1/citizen/requests',
+      citizenRequestDetail: '/api/v1/citizen/requests/:requestId',
       mockEducation: '/api/mock/education',
       mockRevenue: '/api/mock/revenue',
       mockResidence: '/api/mock/residence'

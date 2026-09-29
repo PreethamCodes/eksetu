@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { initiateVerification, submitConsentDecision } from '../services/api';
+import { initiateVerification, submitConsentDecision, fetchAuditTrail, fetchProvenance } from '../services/api';
 import {
   ApplicantFormData,
   ConsentPendingResponse,
@@ -12,6 +12,9 @@ import { RequestTrace } from '../components/RequestTrace';
 import { ConsentModal } from '../components/ConsentModal';
 import { ConsentDetailsCard } from '../components/ConsentDetailsCard';
 import { PolicyDecisionCard } from '../components/PolicyDecisionCard';
+import { VerificationSources } from '../components/VerificationSources';
+import { VerificationTimeline } from '../components/VerificationTimeline';
+import { CitizenTransparencyDashboard } from '../components/CitizenTransparencyDashboard';
 import {
   FileText,
   ShieldCheck,
@@ -25,7 +28,11 @@ import {
   ArrowLeft,
   ShieldBan,
   Lock,
-  XCircle
+  XCircle,
+  History,
+  Search,
+  X,
+  Eye
 } from 'lucide-react';
 
 const DEFAULT_FORM: ApplicantFormData = {
@@ -54,6 +61,49 @@ export const ScholarshipPage: React.FC = () => {
   const [isOrchestrating, setIsOrchestrating] = useState(false);
   const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // V5 Citizen Transparency Modal state
+  const [showTransparencyModal, setShowTransparencyModal] = useState(false);
+
+  // V4 Trace Lookup state
+  const [traceLookupOpen, setTraceLookupOpen] = useState(false);
+  const [lookupRequestId, setLookupRequestId] = useState('');
+  const [lookupRole, setLookupRole] = useState<'CITIZEN' | 'AUDITOR' | 'ADMIN'>('AUDITOR');
+  const [lookupApplicantId, setLookupApplicantId] = useState(formData.applicationId);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [lookupAuditData, setLookupAuditData] = useState<{
+    requestId: string;
+    events: any[];
+    provenance: any[];
+  } | null>(null);
+
+  const handleLookupTrace = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lookupRequestId.trim()) return;
+    setLookupLoading(true);
+    setLookupError(null);
+    setLookupAuditData(null);
+    try {
+      const authHeaders = {
+        role: lookupRole,
+        applicantId: lookupRole === 'CITIZEN' ? (lookupApplicantId.trim() || formData.applicationId) : undefined
+      };
+      const [auditRes, provRes] = await Promise.all([
+        fetchAuditTrail(lookupRequestId.trim(), authHeaders),
+        fetchProvenance(lookupRequestId.trim(), authHeaders).catch(() => ({ provenance: [] }))
+      ]);
+      setLookupAuditData({
+        requestId: lookupRequestId.trim(),
+        events: auditRes.events,
+        provenance: provRes.provenance || []
+      });
+    } catch (err: any) {
+      setLookupError(err.message || 'Failed to lookup request trace');
+    } finally {
+      setLookupLoading(false);
+    }
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -199,13 +249,33 @@ export const ScholarshipPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="text-left sm:text-right">
-            <span className="text-[11px] font-semibold uppercase text-slate-400 block">
-              Application ID
-            </span>
-            <span className="text-sm font-mono font-bold text-slate-800">
-              {formData.applicationId}
-            </span>
+          <div className="flex flex-col sm:items-end space-y-2">
+            <div>
+              <span className="text-[11px] font-semibold uppercase text-slate-400 block">
+                Application ID
+              </span>
+              <span className="text-sm font-mono font-bold text-slate-800">
+                {formData.applicationId}
+              </span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => setShowTransparencyModal(true)}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold transition-colors shadow-sm"
+              >
+                <Eye className="w-3.5 h-3.5 text-emerald-700" />
+                <span>My Data Usage (V5)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTraceLookupOpen(true)}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold transition-colors shadow-sm"
+              >
+                <History className="w-3.5 h-3.5" />
+                <span>Trace Request by ID</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -469,6 +539,22 @@ export const ScholarshipPage: React.FC = () => {
               consentDecision="DENIED"
             />
 
+            {/* V4 Provenance Card */}
+            <div className="mt-6">
+              <VerificationSources
+                provenance={verificationResult?.provenance}
+                dataReleased={false}
+              />
+            </div>
+
+            {/* V4 Audit Trail Timeline */}
+            <div className="mt-6">
+              <VerificationTimeline
+                events={verificationResult?.auditEvents}
+                requestId={verificationResult?.requestId}
+              />
+            </div>
+
             {/* Request Trace */}
             {verificationResult?.trace && (
               <RequestTrace
@@ -536,6 +622,22 @@ export const ScholarshipPage: React.FC = () => {
                 <PolicyDecisionCard policy={verificationResult.policy} />
               </div>
             )}
+
+            {/* V4 Provenance Card */}
+            <div className="mt-6">
+              <VerificationSources
+                provenance={verificationResult?.provenance}
+                dataReleased={false}
+              />
+            </div>
+
+            {/* V4 Audit Trail Timeline */}
+            <div className="mt-6">
+              <VerificationTimeline
+                events={verificationResult?.auditEvents}
+                requestId={verificationResult?.requestId}
+              />
+            </div>
 
             {/* Request Trace */}
             {verificationResult?.trace && (
@@ -834,6 +936,22 @@ export const ScholarshipPage: React.FC = () => {
               consentDecision="GRANTED"
             />
 
+            {/* V4 Authoritative Data Provenance Table */}
+            <div className="mt-8">
+              <VerificationSources
+                provenance={verificationResult.provenance}
+                dataReleased={verificationResult.dataReleased}
+              />
+            </div>
+
+            {/* V4 Verification Audit Trail Timeline */}
+            <div className="mt-8">
+              <VerificationTimeline
+                events={verificationResult.auditEvents}
+                requestId={verificationResult.requestId}
+              />
+            </div>
+
             {/* Request Trace Expandable */}
             {verificationResult.trace && (
               <RequestTrace
@@ -849,14 +967,149 @@ export const ScholarshipPage: React.FC = () => {
                 <span>Only minimized verified attributes released to Scholarship Application {formData.applicationId}</span>
               </div>
 
+              <div className="flex items-center space-x-3 w-full sm:w-auto">
+                <button
+                  onClick={() => setShowTransparencyModal(true)}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center justify-center space-x-2 transition-colors shadow-sm"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Citizen Transparency View</span>
+                </button>
+
+                <button
+                  onClick={handleReset}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold text-xs flex items-center justify-center space-x-2 transition-colors"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset / Test Another Scenario</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* V4 Request ID Trace Lookup Modal */}
+      {traceLookupOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 bg-indigo-50 text-indigo-700 rounded-lg border border-indigo-200">
+                  <History className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[#0F2642]">Audit Trail & Provenance Trace</h3>
+                  <p className="text-xs text-slate-500">Inspect the complete lifecycle and data provenance of any Request ID</p>
+                </div>
+              </div>
               <button
-                onClick={handleReset}
-                className="w-full sm:w-auto px-5 py-2.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold text-xs flex items-center justify-center space-x-2 transition-colors"
+                onClick={() => setTraceLookupOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset / Test Another Scenario</span>
+                <X className="w-5 h-5" />
               </button>
             </div>
+
+            <div className="p-6 space-y-6">
+              <form onSubmit={handleLookupTrace} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Demo Role (Server-Validated)
+                    </label>
+                    <select
+                      value={lookupRole}
+                      onChange={e => setLookupRole(e.target.value as any)}
+                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="AUDITOR">Auditor (Full Trace Access)</option>
+                      <option value="ADMIN">Admin (Operations Access)</option>
+                      <option value="CITIZEN">Citizen (Own Request Only)</option>
+                    </select>
+                  </div>
+
+                  {lookupRole === 'CITIZEN' ? (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                        Citizen Application ID
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. SCH-2026-001"
+                        value={lookupApplicantId}
+                        onChange={e => setLookupApplicantId(e.target.value)}
+                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl font-mono text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center text-xs text-slate-500 pt-5">
+                      <span>Auditors and Admins have institutional oversight authorization.</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    <input
+                      type="text"
+                      placeholder="Enter Request ID (e.g. REQ-20260930-XXXXX)..."
+                      value={lookupRequestId}
+                      onChange={e => setLookupRequestId(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={lookupLoading || !lookupRequestId.trim()}
+                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-sm disabled:opacity-60 flex items-center space-x-1.5 transition-colors"
+                  >
+                    {lookupLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <span>Trace</span>
+                    )}
+                  </button>
+                </div>
+              </form>
+
+              {lookupError && (
+                <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-center space-x-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-600" />
+                  <span>{lookupError}</span>
+                </div>
+              )}
+
+              {lookupAuditData && (
+                <div className="space-y-6">
+                  {/* Provenance */}
+                  <VerificationSources
+                    provenance={lookupAuditData.provenance}
+                    dataReleased={lookupAuditData.provenance.length > 0}
+                  />
+
+                  {/* Audit Timeline */}
+                  <VerificationTimeline
+                    events={lookupAuditData.events}
+                    requestId={lookupAuditData.requestId}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* V5 Citizen Transparency & Data Usage Dashboard Modal */}
+      {showTransparencyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-200">
+            <CitizenTransparencyDashboard
+              currentApplicantId={formData.applicationId}
+              initialRequestId={verificationResult?.requestId}
+              onClose={() => setShowTransparencyModal(false)}
+            />
           </div>
         </div>
       )}

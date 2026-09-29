@@ -3,6 +3,7 @@ import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { LandingPage } from './pages/LandingPage';
 import { ScholarshipPage } from './pages/ScholarshipPage';
+import { CitizenTransparencyDashboard } from './components/CitizenTransparencyDashboard';
 
 export function App() {
   const [currentPath, setCurrentPath] = useState<string>('/scholarship');
@@ -14,6 +15,12 @@ export function App() {
       <main className="flex-1">
         {currentPath === '/' ? (
           <LandingPage onNavigateToScholarship={() => setCurrentPath('/scholarship')} />
+        ) : currentPath === '/transparency' ? (
+          <div className="max-w-7xl mx-auto px-4 sm:px-8 py-8">
+            <CitizenTransparencyDashboard
+              onClose={() => setCurrentPath('/scholarship')}
+            />
+          </div>
         ) : (
           <ScholarshipPage />
         )}

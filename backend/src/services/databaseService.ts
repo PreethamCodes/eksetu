@@ -1,6 +1,7 @@
 import { supabase } from '../utils/supabaseClient';
 import {
   AggregatedVerificationResult,
+  AuditEvent,
   ConsentRecord,
   VerificationRequestInput,
   VerificationStatus
@@ -10,6 +11,7 @@ import {
 const inMemoryRequests: Map<string, any> = new Map();
 const inMemoryConsents: Map<string, ConsentRecord> = new Map();
 const inMemoryResults: Map<string, any[]> = new Map();
+const inMemoryAuditEvents: Map<string, AuditEvent[]> = new Map();
 
 export class DatabaseService {
   /**
@@ -26,6 +28,8 @@ export class DatabaseService {
       service,
       applicant_data: payload.applicant,
       requested_data: payload.requestedData,
+      simulate_failure: payload.simulateFailure,
+      simulateFailure: payload.simulateFailure,
       status,
       created_at: new Date().toISOString()
     };
@@ -34,7 +38,14 @@ export class DatabaseService {
 
     if (supabase) {
       try {
-        const { error } = await supabase.from('verification_requests').insert([record]);
+        const { error } = await supabase.from('verification_requests').insert([{
+          request_id: requestId,
+          service,
+          applicant_data: payload.applicant,
+          requested_data: payload.requestedData,
+          status,
+          created_at: record.created_at
+        }]);
         if (error) {
           console.warn('[DB] Supabase insert request error (falling back to memory):', error.message);
         }
@@ -143,12 +154,14 @@ export class DatabaseService {
   static async updateRequestStatus(
     requestId: string,
     status: VerificationStatus,
-    completedAt?: string
+    completedAt?: string,
+    result?: AggregatedVerificationResult
   ): Promise<void> {
     const existing = inMemoryRequests.get(requestId);
     if (existing) {
       existing.status = status;
       if (completedAt) existing.completed_at = completedAt;
+      if (result) existing.result = result;
     }
 
     if (supabase) {
@@ -164,6 +177,57 @@ export class DatabaseService {
         console.warn('[DB] Supabase update status error:', err);
       }
     }
+  }
+
+  /**
+   * Retrieve all requests for a specific applicant ID
+   */
+  static async getRequestsByApplicantId(applicantId: string): Promise<any[]> {
+    const normalized = applicantId.trim().toLowerCase();
+    const results: any[] = [];
+
+    for (const [reqId, reqRecord] of inMemoryRequests.entries()) {
+      const applicant = reqRecord.applicant_data || reqRecord.applicant || {};
+      const appId = applicant.applicationId || applicant.id;
+      const appName = applicant.name;
+
+      if (
+        (appId && String(appId).toLowerCase() === normalized) ||
+        (appName && String(appName).toLowerCase() === normalized)
+      ) {
+        const enriched = { ...reqRecord };
+        enriched.consent = inMemoryConsents.get(reqId) || null;
+        enriched.verification_results = inMemoryResults.get(reqId) || [];
+        enriched.audit_events = inMemoryAuditEvents.get(reqId) || [];
+        results.push(enriched);
+      }
+    }
+
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('verification_requests')
+          .select('*, verification_results(*), consents(*)')
+          .or(`applicant_data->>applicationId.ilike.${applicantId},applicant_data->>id.ilike.${applicantId},applicant_data->>name.ilike.${applicantId}`)
+          .order('created_at', { ascending: false });
+
+        if (!error && data && data.length > 0) {
+          for (const item of data) {
+            const inMem = inMemoryRequests.get(item.request_id);
+            if (inMem?.result) item.result = inMem.result;
+            if (inMem?.applicant_data) item.applicant_data = inMem.applicant_data;
+            if (inMem?.simulate_failure) item.simulate_failure = inMem.simulate_failure;
+            if (inMem?.simulateFailure) item.simulateFailure = inMem.simulateFailure;
+          }
+          return data;
+        }
+      } catch (err) {
+        console.warn('[DB] Supabase getRequestsByApplicantId error:', err);
+      }
+    }
+
+    results.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    return results;
   }
 
   /**
@@ -242,6 +306,14 @@ export class DatabaseService {
 
         if (!error && data) {
           requestData = data;
+          const inMem = inMemoryRequests.get(requestId);
+          if (inMem) {
+            if (inMem.result) requestData.result = inMem.result;
+            if (inMem.applicant_data) requestData.applicant_data = inMem.applicant_data;
+            if (inMem.requested_data) requestData.requested_data = inMem.requested_data;
+            if (inMem.simulate_failure) requestData.simulate_failure = inMem.simulate_failure;
+            if (inMem.simulateFailure) requestData.simulateFailure = inMem.simulateFailure;
+          }
         }
       } catch (err) {
         console.warn('[DB] Supabase query error:', err);
@@ -257,5 +329,67 @@ export class DatabaseService {
     }
 
     return requestData;
+  }
+
+  /**
+   * Save an audit event record (V4)
+   */
+  static async createAuditEvent(event: AuditEvent): Promise<void> {
+    const list = inMemoryAuditEvents.get(event.requestId) || [];
+    list.push(event);
+    inMemoryAuditEvents.set(event.requestId, list);
+
+    if (supabase) {
+      try {
+        const { error } = await supabase.from('audit_events').insert([{
+          id: event.id,
+          request_id: event.requestId,
+          event_type: event.eventType,
+          service: event.service,
+          provider: event.provider,
+          status: event.status,
+          metadata: event.metadata,
+          created_at: event.createdAt
+        }]);
+        if (error) {
+          console.warn('[DB] Supabase insert audit_event error (falling back to memory):', error.message);
+        }
+      } catch (err) {
+        console.warn('[DB] Supabase audit connection error:', err);
+      }
+    }
+  }
+
+  /**
+   * Retrieve audit events for a request ID ordered chronologically (V4)
+   */
+  static async getAuditEventsByRequestId(requestId: string): Promise<AuditEvent[]> {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('audit_events')
+          .select('*')
+          .eq('request_id', requestId)
+          .order('created_at', { ascending: true });
+
+        if (!error && data && data.length > 0) {
+          return data.map((d: any) => ({
+            id: d.id,
+            requestId: d.request_id,
+            eventType: d.event_type,
+            service: d.service,
+            provider: d.provider,
+            status: d.status,
+            metadata: d.metadata,
+            createdAt: d.created_at,
+            timestamp: d.created_at
+          }));
+        }
+      } catch (err) {
+        console.warn('[DB] Supabase audit query error:', err);
+      }
+    }
+
+    return inMemoryAuditEvents.get(requestId) || [];
   }
 }

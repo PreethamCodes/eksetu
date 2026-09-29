@@ -1,7 +1,9 @@
 import {
   ConsentPendingResponse,
   VerificationRequestPayload,
-  VerificationResult
+  VerificationResult,
+  CitizenRequestSummary,
+  CitizenTransparencyView
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
@@ -71,5 +73,105 @@ export async function checkGatewayHealth(): Promise<{
 export async function fetchRequestRecord(requestId: string): Promise<any> {
   const response = await fetch(`${API_BASE_URL}/api/v1/requests/${requestId}`);
   if (!response.ok) throw new Error('Failed to fetch request record');
+  return response.json();
+}
+
+export interface TraceAuthHeaders {
+  role?: 'CITIZEN' | 'AUDITOR' | 'ADMIN';
+  applicantId?: string;
+}
+
+/**
+ * V4: Fetch structured audit trail for a request ID
+ */
+export async function fetchAuditTrail(
+  requestId: string,
+  authHeaders?: TraceAuthHeaders
+): Promise<{
+  requestId: string;
+  totalEvents: number;
+  events: any[];
+}> {
+  const headers: Record<string, string> = {};
+  if (authHeaders?.role) headers['x-user-role'] = authHeaders.role;
+  if (authHeaders?.applicantId) headers['x-applicant-id'] = authHeaders.applicantId;
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/requests/${requestId}/audit`, {
+    headers
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || errorData.error || `Server returned ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * V4: Fetch provenance records for a request ID
+ */
+export async function fetchProvenance(
+  requestId: string,
+  authHeaders?: TraceAuthHeaders
+): Promise<{
+  requestId: string;
+  service: string;
+  verificationStatus: string;
+  totalVerifiedFields: number;
+  provenance: any[];
+}> {
+  const headers: Record<string, string> = {};
+  if (authHeaders?.role) headers['x-user-role'] = authHeaders.role;
+  if (authHeaders?.applicantId) headers['x-applicant-id'] = authHeaders.applicantId;
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/requests/${requestId}/provenance`, {
+    headers
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || errorData.error || `Server returned ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * V5: Fetch list of requests for authenticated citizen
+ */
+export async function fetchCitizenRequests(
+  applicantId: string
+): Promise<{
+  applicantId: string;
+  totalRequests: number;
+  requests: CitizenRequestSummary[];
+}> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/citizen/requests`, {
+    headers: {
+      'x-applicant-id': applicantId
+    }
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || errorData.error || `Server returned ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * V5: Fetch citizen transparency & data usage view for a specific request
+ */
+export async function fetchCitizenRequestDetail(
+  requestId: string,
+  applicantId: string
+): Promise<CitizenTransparencyView> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/citizen/requests/${requestId}`, {
+    headers: {
+      'x-applicant-id': applicantId
+    }
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || errorData.error || `Server returned ${response.status}`);
+  }
   return response.json();
 }
