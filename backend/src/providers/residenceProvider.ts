@@ -1,4 +1,4 @@
-import { ApplicantInfo, MockDepartmentResponse } from '../models/types';
+import { ApplicantInfo, FailureSimulationConfig, MockDepartmentResponse } from '../models/types';
 
 export interface ExtendedResidenceData {
   verified: boolean;
@@ -21,15 +21,52 @@ export class ResidenceProvider {
    */
   static async verify(
     applicant: ApplicantInfo,
-    shouldFail = false
+    simulation?: FailureSimulationConfig | boolean
   ): Promise<MockDepartmentResponse<ExtendedResidenceData>> {
     const verifiedAt = new Date().toISOString();
 
-    if (shouldFail) {
+    const failureType = typeof simulation === 'object' ? (simulation.failureType || 'FAILURE') : (simulation ? 'FAILURE' : 'NORMAL');
+    const customReason = typeof simulation === 'object' ? simulation.reason : undefined;
+
+    if (failureType === 'TIMEOUT') {
+      const timeoutMs = Number(process.env.PROVIDER_TIMEOUT_MS || 5000);
+      await new Promise(resolve => setTimeout(resolve, timeoutMs + 100));
       return {
         department: this.departmentName,
         status: 'FAILED',
-        error: 'Residence Department verification failed: Domicile record verification timed out.',
+        error: customReason || 'Residence Department verification failed: Domicile record verification timed out.',
+        verifiedAt
+      };
+    }
+
+    if (failureType === 'RECORD_NOT_FOUND') {
+      return {
+        department: this.departmentName,
+        status: 'FAILED',
+        error: customReason || 'Applicant residence record not found in Municipal registry.',
+        verifiedAt
+      };
+    }
+
+    if (failureType === 'FAILURE') {
+      return {
+        department: this.departmentName,
+        status: 'FAILED',
+        error: customReason || 'Residence Department verification failed: Domicile record verification timed out.',
+        verifiedAt
+      };
+    }
+
+    if (failureType === 'MALFORMED_RESPONSE') {
+      return {
+        department: this.departmentName,
+        status: 'VERIFIED',
+        data: {
+          verified: 'yes' as any,
+          domicileState: 12345 as any,
+          state: 12345 as any,
+          residenceStatus: 'VALID'
+        },
         verifiedAt
       };
     }

@@ -11,6 +11,7 @@ import { generateRequestId } from '../utils/requestIdGenerator';
 import { EducationProvider } from '../providers/educationProvider';
 import { RevenueProvider } from '../providers/revenueProvider';
 import { ResidenceProvider } from '../providers/residenceProvider';
+import { ProviderValidator } from '../providers/providerValidation';
 import { DatabaseService } from './databaseService';
 import { ConsentService } from './consentService';
 import { AuthorizationService } from './authorizationService';
@@ -21,6 +22,47 @@ import { AuditService } from './auditService';
 const activeRequestTraces: Map<string, TraceStep[]> = new Map();
 
 export class InteroperabilityService {
+  /**
+   * Safe provider execution wrapper with configurable timeout
+   */
+  private static async callProviderWithTimeout<T>(
+    providerName: string,
+    callFn: () => Promise<T>,
+    timeoutMs: number = Number(process.env.PROVIDER_TIMEOUT_MS || 5000)
+  ): Promise<{ data?: T; timedOut: boolean; durationMs: number; error?: string }> {
+    const start = Date.now();
+    let timer: NodeJS.Timeout;
+    const timeoutPromise = new Promise<{ data?: T; timedOut: boolean; durationMs: number; error?: string }>((resolve) => {
+      timer = setTimeout(() => {
+        resolve({
+          timedOut: true,
+          durationMs: Date.now() - start,
+          error: `${providerName} gateway timed out after ${timeoutMs}ms.`
+        });
+      }, timeoutMs);
+    });
+
+    try {
+      const res = await Promise.race([
+        callFn().then(data => ({
+          data,
+          timedOut: false,
+          durationMs: Date.now() - start
+        })),
+        timeoutPromise
+      ]);
+      clearTimeout(timer!);
+      return res;
+    } catch (err: any) {
+      clearTimeout(timer!);
+      return {
+        timedOut: false,
+        durationMs: Date.now() - start,
+        error: err.message || `${providerName} communication failure`
+      };
+    }
+  }
+
   /**
    * STEP 1: Initiates a Verification Request (V3 Gateway)
    * - Validates requesting service against Service Registry
@@ -57,6 +99,9 @@ export class InteroperabilityService {
       err.requestId = requestId;
       throw err;
     }
+
+    // Save initial request record in CONSENT_PENDING state before recording audit events
+    await DatabaseService.createRequestRecord(requestId, payload.service, payload, 'CONSENT_PENDING');
 
     // 1. Trace: Request Created
     trace.push({
@@ -97,9 +142,6 @@ export class InteroperabilityService {
     });
 
     activeRequestTraces.set(requestId, trace);
-
-    // Save initial request record in CONSENT_PENDING state
-    await DatabaseService.createRequestRecord(requestId, payload.service, payload, 'CONSENT_PENDING');
 
     // Create consent record
     const consentRecord = await ConsentService.createConsentRequest(requestId, payload.service, requestedFields, purpose);
@@ -149,19 +191,29 @@ export class InteroperabilityService {
     // 2. Validate current request & consent state
     const validation = await ConsentService.validateConsentState(requestId);
     if (!validation.valid) {
+      if (validation.error === 'CONSENT_ALREADY_PROCESSED') {
+        await AuditService.recordEvent({
+          requestId,
+          eventType: 'DUPLICATE_REQUEST',
+          service: validation.requestRecord?.service || 'UNKNOWN',
+          status: 'FAILED',
+          metadata: { reason: `Consent has already been processed for request ${requestId}` }
+        });
+      }
       const err: any = new Error(
         validation.error === 'REQUEST_NOT_FOUND'
           ? `Request ${requestId} not found`
           : `Consent has already been processed for request ${requestId}`
       );
-      err.code = validation.error;
-      err.statusCode = validation.code || 400;
+      err.code = validation.error === 'CONSENT_ALREADY_PROCESSED' ? 'DUPLICATE_REQUEST' : validation.error;
+      err.statusCode = validation.code || 409;
       throw err;
     }
 
     const requestRecord = validation.requestRecord;
     const applicant = requestRecord.applicant_data || {};
-    const simulateFailure = applicant.simulateFailure || (requestRecord as any).simulateFailure || (requestRecord as any).simulate_failure;
+    const rawSim = applicant.simulateFailure || (requestRecord as any).simulateFailure || (requestRecord as any).simulate_failure;
+    const simulateFailure = typeof rawSim === 'string' ? { department: rawSim } : rawSim;
     const requestedData = requestRecord.requested_data || [
       'education.qualification',
       'income.annual_income',
@@ -423,36 +475,22 @@ export class InteroperabilityService {
         metadata: { department: 'Education Department' }
       });
 
-      const shouldFail = failDept === 'education';
-      const eduRes = await EducationProvider.verify(applicant, shouldFail);
+      const simConfig = (failDept === 'education') ? (simulateFailure || true) : undefined;
+      const providerCall = await InteroperabilityService.callProviderWithTimeout(
+        'Education Department',
+        () => EducationProvider.verify(applicant, simConfig)
+      );
 
-      sources.push({
-        department: eduRes.department,
-        status: eduRes.status,
-        verifiedAt: eduRes.verifiedAt,
-        error: eduRes.error
-      });
+      const verifiedAt = new Date().toISOString();
 
-      if (eduRes.status === 'VERIFIED' && eduRes.data) {
-        // Enforce Response Minimization (strips institution, cgpa, certificate hash)
-        verifiedData.education = PolicyService.minimizeEducationData(eduRes.data, policyResult.allowedFields);
-
-        await AuditService.recordEvent({
-          requestId,
-          eventType: 'PROVIDER_VERIFIED',
-          service: requestRecord.service,
-          provider: 'EDUCATION',
-          status: 'VERIFIED',
-          metadata: { department: 'Education Department' }
+      if (providerCall.timedOut) {
+        sources.push({
+          department: EducationProvider.departmentName,
+          status: 'FAILED',
+          verifiedAt,
+          error: `Provider timed out after ${providerCall.durationMs}ms`
         });
 
-        trace.push({
-          step: 'EDUCATION_DEPARTMENT_VERIFIED',
-          message: 'Education Department API contacted — Academic qualification record verified by department',
-          status: 'SUCCESS',
-          timestamp: eduRes.verifiedAt
-        });
-      } else {
         verifiedData.education = {
           studentName: applicant.name,
           qualification: applicant.qualification || 'Unverified',
@@ -463,19 +501,126 @@ export class InteroperabilityService {
 
         await AuditService.recordEvent({
           requestId,
-          eventType: 'PROVIDER_VERIFICATION_FAILED',
+          eventType: 'PROVIDER_TIMEOUT',
           service: requestRecord.service,
           provider: 'EDUCATION',
           status: 'FAILED',
-          metadata: { department: 'Education Department', error: eduRes.error || 'Record unverified' }
+          metadata: {
+            department: 'Education Department',
+            durationMs: providerCall.durationMs,
+            timeoutMs: Number(process.env.PROVIDER_TIMEOUT_MS || 5000),
+            error: providerCall.error
+          }
         });
 
         trace.push({
-          step: 'EDUCATION_DEPARTMENT_FAILED',
-          message: `Education Department API returned verification failure: ${eduRes.error || 'Record unverified'}`,
+          step: 'EDUCATION_DEPARTMENT_TIMEOUT',
+          message: `Education Department request timed out after ${providerCall.durationMs}ms`,
           status: 'FAILED',
-          timestamp: eduRes.verifiedAt
+          timestamp: verifiedAt
         });
+      } else {
+        const eduRes = providerCall.data || {
+          department: EducationProvider.departmentName,
+          status: 'FAILED' as const,
+          error: providerCall.error || 'Provider communication failure',
+          verifiedAt
+        };
+
+        if (eduRes.status === 'VERIFIED' && eduRes.data) {
+          const contractCheck = ProviderValidator.validateEducation(eduRes.data);
+          if (!contractCheck.valid) {
+            sources.push({
+              department: eduRes.department,
+              status: 'FAILED',
+              verifiedAt: eduRes.verifiedAt,
+              error: contractCheck.error
+            });
+
+            verifiedData.education = {
+              studentName: applicant.name,
+              qualification: applicant.qualification || 'Unverified',
+              marksPercentage: applicant.marksPercentage || 0,
+              status: 'FAILED',
+              verified: false
+            };
+
+            await AuditService.recordEvent({
+              requestId,
+              eventType: 'PROVIDER_INVALID_RESPONSE',
+              service: requestRecord.service,
+              provider: 'EDUCATION',
+              status: 'FAILED',
+              metadata: {
+                department: 'Education Department',
+                error: contractCheck.error
+              }
+            });
+
+            trace.push({
+              step: 'EDUCATION_DEPARTMENT_MALFORMED',
+              message: `Education Department returned malformed response: ${contractCheck.error}`,
+              status: 'FAILED',
+              timestamp: eduRes.verifiedAt
+            });
+          } else {
+            // Passed contract validation
+            verifiedData.education = PolicyService.minimizeEducationData(eduRes.data, policyResult.allowedFields);
+
+            sources.push({
+              department: eduRes.department,
+              status: 'VERIFIED',
+              verifiedAt: eduRes.verifiedAt
+            });
+
+            await AuditService.recordEvent({
+              requestId,
+              eventType: 'PROVIDER_VERIFIED',
+              service: requestRecord.service,
+              provider: 'EDUCATION',
+              status: 'VERIFIED',
+              metadata: { department: 'Education Department' }
+            });
+
+            trace.push({
+              step: 'EDUCATION_DEPARTMENT_VERIFIED',
+              message: 'Education Department API contacted — Academic qualification record verified by department',
+              status: 'SUCCESS',
+              timestamp: eduRes.verifiedAt
+            });
+          }
+        } else {
+          sources.push({
+            department: eduRes.department,
+            status: eduRes.status || 'FAILED',
+            verifiedAt: eduRes.verifiedAt,
+            error: eduRes.error
+          });
+
+          verifiedData.education = {
+            studentName: applicant.name,
+            qualification: applicant.qualification || 'Unverified',
+            marksPercentage: applicant.marksPercentage,
+            status: 'FAILED',
+            verified: false
+          };
+
+          await AuditService.recordEvent({
+            requestId,
+            eventType: 'PROVIDER_VERIFICATION_FAILED',
+            service: requestRecord.service,
+            provider: 'EDUCATION',
+            status: 'FAILED',
+            metadata: { department: 'Education Department', error: eduRes.error || 'Record unverified' }
+          });
+
+          trace.push({
+            step: 'EDUCATION_DEPARTMENT_FAILED',
+            message: `Education Department API returned verification failure: ${eduRes.error || 'Record unverified'}`,
+            status: 'FAILED',
+            timestamp: eduRes.verifiedAt
+          });
+        }
       }
     }
 
@@ -490,36 +635,22 @@ export class InteroperabilityService {
         metadata: { department: 'Revenue Department' }
       });
 
-      const shouldFail = failDept === 'revenue';
-      const revRes = await RevenueProvider.verify(applicant, shouldFail);
+      const simConfig = (failDept === 'revenue') ? (simulateFailure || true) : undefined;
+      const providerCall = await InteroperabilityService.callProviderWithTimeout(
+        'Revenue Department',
+        () => RevenueProvider.verify(applicant, simConfig)
+      );
 
-      sources.push({
-        department: revRes.department,
-        status: revRes.status,
-        verifiedAt: revRes.verifiedAt,
-        error: revRes.error
-      });
+      const verifiedAt = new Date().toISOString();
 
-      if (revRes.status === 'VERIFIED' && revRes.data) {
-        // Enforce Response Minimization (strips bankBalance, financialHistory, taxStatus, panCardRef)
-        verifiedData.income = PolicyService.minimizeIncomeData(revRes.data, policyResult.allowedFields);
-
-        await AuditService.recordEvent({
-          requestId,
-          eventType: 'PROVIDER_VERIFIED',
-          service: requestRecord.service,
-          provider: 'REVENUE',
-          status: 'VERIFIED',
-          metadata: { department: 'Revenue Department' }
+      if (providerCall.timedOut) {
+        sources.push({
+          department: RevenueProvider.departmentName,
+          status: 'FAILED',
+          verifiedAt,
+          error: `Provider timed out after ${providerCall.durationMs}ms`
         });
 
-        trace.push({
-          step: 'REVENUE_DEPARTMENT_VERIFIED',
-          message: 'Revenue Department API contacted — Annual income record verified by department (extraneous fields stripped)',
-          status: 'SUCCESS',
-          timestamp: revRes.verifiedAt
-        });
-      } else {
         verifiedData.income = {
           annualIncome: applicant.annualIncome || 0,
           status: 'FAILED',
@@ -528,19 +659,122 @@ export class InteroperabilityService {
 
         await AuditService.recordEvent({
           requestId,
-          eventType: 'PROVIDER_VERIFICATION_FAILED',
+          eventType: 'PROVIDER_TIMEOUT',
           service: requestRecord.service,
           provider: 'REVENUE',
           status: 'FAILED',
-          metadata: { department: 'Revenue Department', error: revRes.error || 'Record unverified' }
+          metadata: {
+            department: 'Revenue Department',
+            durationMs: providerCall.durationMs,
+            timeoutMs: Number(process.env.PROVIDER_TIMEOUT_MS || 5000),
+            error: providerCall.error
+          }
         });
 
         trace.push({
-          step: 'REVENUE_DEPARTMENT_FAILED',
-          message: `Revenue Department API returned verification failure: ${revRes.error || 'Record unverified'}`,
+          step: 'REVENUE_DEPARTMENT_TIMEOUT',
+          message: `Revenue Department request timed out after ${providerCall.durationMs}ms`,
           status: 'FAILED',
-          timestamp: revRes.verifiedAt
+          timestamp: verifiedAt
         });
+      } else {
+        const revRes = providerCall.data || {
+          department: RevenueProvider.departmentName,
+          status: 'FAILED' as const,
+          error: providerCall.error || 'Provider communication failure',
+          verifiedAt
+        };
+
+        if (revRes.status === 'VERIFIED' && revRes.data) {
+          const contractCheck = ProviderValidator.validateRevenue(revRes.data);
+          if (!contractCheck.valid) {
+            sources.push({
+              department: revRes.department,
+              status: 'FAILED',
+              verifiedAt: revRes.verifiedAt,
+              error: contractCheck.error
+            });
+
+            verifiedData.income = {
+              annualIncome: 0,
+              status: 'FAILED',
+              verified: false
+            };
+
+            await AuditService.recordEvent({
+              requestId,
+              eventType: 'PROVIDER_INVALID_RESPONSE',
+              service: requestRecord.service,
+              provider: 'REVENUE',
+              status: 'FAILED',
+              metadata: {
+                department: 'Revenue Department',
+                error: contractCheck.error
+              }
+            });
+
+            trace.push({
+              step: 'REVENUE_DEPARTMENT_MALFORMED',
+              message: `Revenue Department returned malformed response: ${contractCheck.error}`,
+              status: 'FAILED',
+              timestamp: revRes.verifiedAt
+            });
+          } else {
+            // Passed contract validation
+            verifiedData.income = PolicyService.minimizeIncomeData(revRes.data, policyResult.allowedFields);
+
+            sources.push({
+              department: revRes.department,
+              status: 'VERIFIED',
+              verifiedAt: revRes.verifiedAt
+            });
+
+            await AuditService.recordEvent({
+              requestId,
+              eventType: 'PROVIDER_VERIFIED',
+              service: requestRecord.service,
+              provider: 'REVENUE',
+              status: 'VERIFIED',
+              metadata: { department: 'Revenue Department' }
+            });
+
+            trace.push({
+              step: 'REVENUE_DEPARTMENT_VERIFIED',
+              message: 'Revenue Department API contacted — Annual income record verified by department (extraneous fields stripped)',
+              status: 'SUCCESS',
+              timestamp: revRes.verifiedAt
+            });
+          }
+        } else {
+          sources.push({
+            department: revRes.department,
+            status: revRes.status || 'FAILED',
+            verifiedAt: revRes.verifiedAt,
+            error: revRes.error
+          });
+
+          verifiedData.income = {
+            annualIncome: applicant.annualIncome || 0,
+            status: 'FAILED',
+            verified: false
+          };
+
+          await AuditService.recordEvent({
+            requestId,
+            eventType: 'PROVIDER_VERIFICATION_FAILED',
+            service: requestRecord.service,
+            provider: 'REVENUE',
+            status: 'FAILED',
+            metadata: { department: 'Revenue Department', error: revRes.error || 'Record unverified' }
+          });
+
+          trace.push({
+            step: 'REVENUE_DEPARTMENT_FAILED',
+            message: `Revenue Department API returned verification failure: ${revRes.error || 'Record unverified'}`,
+            status: 'FAILED',
+            timestamp: revRes.verifiedAt
+          });
+        }
       }
     }
 
@@ -555,36 +789,22 @@ export class InteroperabilityService {
         metadata: { department: 'Residence Department' }
       });
 
-      const shouldFail = failDept === 'residence';
-      const resRes = await ResidenceProvider.verify(applicant, shouldFail);
+      const simConfig = (failDept === 'residence') ? (simulateFailure || true) : undefined;
+      const providerCall = await InteroperabilityService.callProviderWithTimeout(
+        'Residence Department',
+        () => ResidenceProvider.verify(applicant, simConfig)
+      );
 
-      sources.push({
-        department: resRes.department,
-        status: resRes.status,
-        verifiedAt: resRes.verifiedAt,
-        error: resRes.error
-      });
+      const verifiedAt = new Date().toISOString();
 
-      if (resRes.status === 'VERIFIED' && resRes.data) {
-        // Enforce Response Minimization (strips fullAddress, propertyDetails, district)
-        verifiedData.residence = PolicyService.minimizeResidenceData(resRes.data, policyResult.allowedFields);
-
-        await AuditService.recordEvent({
-          requestId,
-          eventType: 'PROVIDER_VERIFIED',
-          service: requestRecord.service,
-          provider: 'RESIDENCE',
-          status: 'VERIFIED',
-          metadata: { department: 'Residence Department' }
+      if (providerCall.timedOut) {
+        sources.push({
+          department: ResidenceProvider.departmentName,
+          status: 'FAILED',
+          verifiedAt,
+          error: `Provider timed out after ${providerCall.durationMs}ms`
         });
 
-        trace.push({
-          step: 'RESIDENCE_DEPARTMENT_VERIFIED',
-          message: 'Residence Department API contacted — State domicile record verified by department (extraneous fields stripped)',
-          status: 'SUCCESS',
-          timestamp: resRes.verifiedAt
-        });
-      } else {
         verifiedData.residence = {
           state: applicant.residenceState || 'Unknown',
           domicileState: applicant.residenceState || 'Unknown',
@@ -594,19 +814,124 @@ export class InteroperabilityService {
 
         await AuditService.recordEvent({
           requestId,
-          eventType: 'PROVIDER_VERIFICATION_FAILED',
+          eventType: 'PROVIDER_TIMEOUT',
           service: requestRecord.service,
           provider: 'RESIDENCE',
           status: 'FAILED',
-          metadata: { department: 'Residence Department', error: resRes.error || 'Record unverified' }
+          metadata: {
+            department: 'Residence Department',
+            durationMs: providerCall.durationMs,
+            timeoutMs: Number(process.env.PROVIDER_TIMEOUT_MS || 5000),
+            error: providerCall.error
+          }
         });
 
         trace.push({
-          step: 'RESIDENCE_DEPARTMENT_FAILED',
-          message: `Residence Department API returned verification failure: ${resRes.error || 'Record unverified'}`,
+          step: 'RESIDENCE_DEPARTMENT_TIMEOUT',
+          message: `Residence Department request timed out after ${providerCall.durationMs}ms`,
           status: 'FAILED',
-          timestamp: resRes.verifiedAt
+          timestamp: verifiedAt
         });
+      } else {
+        const resRes = providerCall.data || {
+          department: ResidenceProvider.departmentName,
+          status: 'FAILED' as const,
+          error: providerCall.error || 'Provider communication failure',
+          verifiedAt
+        };
+
+        if (resRes.status === 'VERIFIED' && resRes.data) {
+          const contractCheck = ProviderValidator.validateResidence(resRes.data);
+          if (!contractCheck.valid) {
+            sources.push({
+              department: resRes.department,
+              status: 'FAILED',
+              verifiedAt: resRes.verifiedAt,
+              error: contractCheck.error
+            });
+
+            verifiedData.residence = {
+              state: 'Unknown',
+              domicileState: 'Unknown',
+              status: 'FAILED',
+              verified: false
+            };
+
+            await AuditService.recordEvent({
+              requestId,
+              eventType: 'PROVIDER_INVALID_RESPONSE',
+              service: requestRecord.service,
+              provider: 'RESIDENCE',
+              status: 'FAILED',
+              metadata: {
+                department: 'Residence Department',
+                error: contractCheck.error
+              }
+            });
+
+            trace.push({
+              step: 'RESIDENCE_DEPARTMENT_MALFORMED',
+              message: `Residence Department returned malformed response: ${contractCheck.error}`,
+              status: 'FAILED',
+              timestamp: resRes.verifiedAt
+            });
+          } else {
+            // Passed contract validation
+            verifiedData.residence = PolicyService.minimizeResidenceData(resRes.data, policyResult.allowedFields);
+
+            sources.push({
+              department: resRes.department,
+              status: 'VERIFIED',
+              verifiedAt: resRes.verifiedAt
+            });
+
+            await AuditService.recordEvent({
+              requestId,
+              eventType: 'PROVIDER_VERIFIED',
+              service: requestRecord.service,
+              provider: 'RESIDENCE',
+              status: 'VERIFIED',
+              metadata: { department: 'Residence Department' }
+            });
+
+            trace.push({
+              step: 'RESIDENCE_DEPARTMENT_VERIFIED',
+              message: 'Residence Department API contacted — State domicile record verified by department (extraneous fields stripped)',
+              status: 'SUCCESS',
+              timestamp: resRes.verifiedAt
+            });
+          }
+        } else {
+          sources.push({
+            department: resRes.department,
+            status: resRes.status || 'FAILED',
+            verifiedAt: resRes.verifiedAt,
+            error: resRes.error
+          });
+
+          verifiedData.residence = {
+            state: applicant.residenceState || 'Unknown',
+            domicileState: applicant.residenceState || 'Unknown',
+            status: 'FAILED',
+            verified: false
+          };
+
+          await AuditService.recordEvent({
+            requestId,
+            eventType: 'PROVIDER_VERIFICATION_FAILED',
+            service: requestRecord.service,
+            provider: 'RESIDENCE',
+            status: 'FAILED',
+            metadata: { department: 'Residence Department', error: resRes.error || 'Record unverified' }
+          });
+
+          trace.push({
+            step: 'RESIDENCE_DEPARTMENT_FAILED',
+            message: `Residence Department API returned verification failure: ${resRes.error || 'Record unverified'}`,
+            status: 'FAILED',
+            timestamp: resRes.verifiedAt
+          });
+        }
       }
     }
 

@@ -283,6 +283,7 @@ export interface VerificationRequestPayload {
   purpose?: string;
   simulateFailure?: {
     department?: 'education' | 'revenue' | 'residence';
+    failureType?: 'NORMAL' | 'FAILURE' | 'TIMEOUT' | 'MALFORMED_RESPONSE' | 'RECORD_NOT_FOUND';
     reason?: string;
   };
 }

@@ -1,4 +1,4 @@
-import { ApplicantInfo, MockDepartmentResponse } from '../models/types';
+import { ApplicantInfo, FailureSimulationConfig, MockDepartmentResponse } from '../models/types';
 
 export interface ExtendedRevenueData {
   verified: boolean;
@@ -22,15 +22,51 @@ export class RevenueProvider {
    */
   static async verify(
     applicant: ApplicantInfo,
-    shouldFail = false
+    simulation?: FailureSimulationConfig | boolean
   ): Promise<MockDepartmentResponse<ExtendedRevenueData>> {
     const verifiedAt = new Date().toISOString();
 
-    if (shouldFail) {
+    const failureType = typeof simulation === 'object' ? (simulation.failureType || 'FAILURE') : (simulation ? 'FAILURE' : 'NORMAL');
+    const customReason = typeof simulation === 'object' ? simulation.reason : undefined;
+
+    if (failureType === 'TIMEOUT') {
+      const timeoutMs = Number(process.env.PROVIDER_TIMEOUT_MS || 5000);
+      await new Promise(resolve => setTimeout(resolve, timeoutMs + 100));
       return {
         department: this.departmentName,
         status: 'FAILED',
-        error: 'Revenue Department verification failed: Income certificate expired or record mismatch.',
+        error: customReason || 'Revenue Department verification timed out.',
+        verifiedAt
+      };
+    }
+
+    if (failureType === 'RECORD_NOT_FOUND') {
+      return {
+        department: this.departmentName,
+        status: 'FAILED',
+        error: customReason || 'Applicant revenue record not found in Revenue Department registry.',
+        verifiedAt
+      };
+    }
+
+    if (failureType === 'FAILURE') {
+      return {
+        department: this.departmentName,
+        status: 'FAILED',
+        error: customReason || 'Revenue Department verification failed: Income certificate expired or record mismatch.',
+        verifiedAt
+      };
+    }
+
+    if (failureType === 'MALFORMED_RESPONSE') {
+      return {
+        department: this.departmentName,
+        status: 'VERIFIED',
+        data: {
+          verified: 'yes' as any,
+          annualIncome: 'unknown' as any,
+          incomeStatus: 'VALID'
+        },
         verifiedAt
       };
     }

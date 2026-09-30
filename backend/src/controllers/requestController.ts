@@ -77,6 +77,18 @@ export class RequestController {
       // V4 Server-Side Access Control (CITIZEN, AUDITOR, ADMIN)
       const auth = validateTraceAuthorization(req, record);
       if (!auth.authorized) {
+        AuditService.recordEvent({
+          requestId,
+          eventType: 'UNAUTHORIZED_ACCESS_ATTEMPT',
+          service: record.service,
+          status: 'FAILED',
+          metadata: {
+            reason: auth.reason || 'Access denied to verification audit trail',
+            role: req.headers['x-user-role'],
+            applicantId: req.headers['x-applicant-id']
+          }
+        }).catch(() => {});
+
         return res.status(403).json({
           error: 'FORBIDDEN',
           message: auth.reason || 'Access denied to verification audit trail'
@@ -117,6 +129,18 @@ export class RequestController {
       // V4 Server-Side Access Control (CITIZEN, AUDITOR, ADMIN)
       const auth = validateTraceAuthorization(req, record);
       if (!auth.authorized) {
+        AuditService.recordEvent({
+          requestId,
+          eventType: 'UNAUTHORIZED_ACCESS_ATTEMPT',
+          service: record.service,
+          status: 'FAILED',
+          metadata: {
+            reason: auth.reason || 'Access denied to verification provenance',
+            role: req.headers['x-user-role'],
+            applicantId: req.headers['x-applicant-id']
+          }
+        }).catch(() => {});
+
         return res.status(403).json({
           error: 'FORBIDDEN',
           message: auth.reason || 'Access denied to verification provenance'

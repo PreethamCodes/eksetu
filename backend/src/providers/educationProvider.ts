@@ -1,4 +1,4 @@
-import { ApplicantInfo, MockDepartmentResponse } from '../models/types';
+import { ApplicantInfo, FailureSimulationConfig, MockDepartmentResponse } from '../models/types';
 
 export interface ExtendedEducationData {
   verified: boolean;
@@ -22,15 +22,53 @@ export class EducationProvider {
    */
   static async verify(
     applicant: ApplicantInfo,
-    shouldFail = false
+    simulation?: FailureSimulationConfig | boolean
   ): Promise<MockDepartmentResponse<ExtendedEducationData>> {
     const verifiedAt = new Date().toISOString();
 
-    if (shouldFail) {
+    const failureType = typeof simulation === 'object' ? (simulation.failureType || 'FAILURE') : (simulation ? 'FAILURE' : 'NORMAL');
+    const customReason = typeof simulation === 'object' ? simulation.reason : undefined;
+
+    if (failureType === 'TIMEOUT') {
+      const timeoutMs = Number(process.env.PROVIDER_TIMEOUT_MS || 5000);
+      await new Promise(resolve => setTimeout(resolve, timeoutMs + 100));
       return {
         department: this.departmentName,
         status: 'FAILED',
-        error: 'Candidate academic record not found or unverified in Education Department database.',
+        error: customReason || 'Education Department registry gateway timed out after waiting for response.',
+        verifiedAt
+      };
+    }
+
+    if (failureType === 'RECORD_NOT_FOUND') {
+      return {
+        department: this.departmentName,
+        status: 'FAILED',
+        error: customReason || 'Applicant academic record not found in Education Department database.',
+        verifiedAt
+      };
+    }
+
+    if (failureType === 'FAILURE') {
+      return {
+        department: this.departmentName,
+        status: 'FAILED',
+        error: customReason || 'Candidate academic record not found or unverified in Education Department database.',
+        verifiedAt
+      };
+    }
+
+    if (failureType === 'MALFORMED_RESPONSE') {
+      return {
+        department: this.departmentName,
+        status: 'VERIFIED',
+        data: {
+          verified: 'yes' as any,
+          studentName: applicant.name || 'Sai Preetham',
+          qualification: applicant.qualification || "Bachelor's Degree",
+          marksPercentage: 'eighty-two' as any,
+          studentStatus: 'GRADUATE'
+        },
         verifiedAt
       };
     }

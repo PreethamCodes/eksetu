@@ -143,9 +143,10 @@ export async function fetchCitizenRequests(
   totalRequests: number;
   requests: CitizenRequestSummary[];
 }> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/citizen/requests`, {
+  const cleanId = applicantId.trim();
+  const response = await fetch(`${API_BASE_URL}/api/v1/citizen/requests?applicantId=${encodeURIComponent(cleanId)}`, {
     headers: {
-      'x-applicant-id': applicantId
+      'x-applicant-id': cleanId
     }
   });
 
@@ -163,9 +164,10 @@ export async function fetchCitizenRequestDetail(
   requestId: string,
   applicantId: string
 ): Promise<CitizenTransparencyView> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/citizen/requests/${requestId}`, {
+  const cleanId = applicantId.trim();
+  const response = await fetch(`${API_BASE_URL}/api/v1/citizen/requests/${requestId}?applicantId=${encodeURIComponent(cleanId)}`, {
     headers: {
-      'x-applicant-id': applicantId
+      'x-applicant-id': cleanId
     }
   });
 

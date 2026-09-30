@@ -10,10 +10,26 @@ export type VerificationStatus =
   | 'VERIFIED'
   | 'PARTIAL_VERIFIED'
   | 'VERIFICATION_FAILED'
-  | 'FAILED';
+  | 'FAILED'
+  | 'PROVIDER_ERROR'
+  | 'PROVIDER_TIMEOUT'
+  | 'INVALID_REQUEST';
 
 export type ConsentDecision = 'PENDING' | 'GRANTED' | 'DENIED';
 export type ConsentType = 'ONE_TIME';
+
+export type FailureType =
+  | 'NORMAL'
+  | 'FAILURE'
+  | 'TIMEOUT'
+  | 'MALFORMED_RESPONSE'
+  | 'RECORD_NOT_FOUND';
+
+export interface FailureSimulationConfig {
+  department?: 'education' | 'revenue' | 'residence';
+  failureType?: FailureType;
+  reason?: string;
+}
 
 export interface ApplicantInfo {
   applicationId: string;
@@ -30,10 +46,7 @@ export interface VerificationRequestInput {
   applicant: ApplicantInfo;
   requestedData: string[];
   purpose?: string;
-  simulateFailure?: {
-    department?: 'education' | 'revenue' | 'residence';
-    reason?: string;
-  };
+  simulateFailure?: FailureSimulationConfig;
 }
 
 export interface ConsentRecord {
@@ -126,6 +139,12 @@ export type AuditEventType =
   | 'PROVIDER_VERIFIED'
   | 'PROVIDER_VERIFICATION_FAILED'
   | 'PROVIDER_ERROR'
+  | 'PROVIDER_TIMEOUT'
+  | 'PROVIDER_INVALID_RESPONSE'
+  | 'INVALID_REQUEST'
+  | 'UNAUTHORIZED_ACCESS_ATTEMPT'
+  | 'RATE_LIMITED'
+  | 'DUPLICATE_REQUEST'
   | 'RESPONSE_MINIMIZED'
   | 'VERIFICATION_COMPLETED'
   | 'VERIFICATION_PARTIAL'

@@ -50,7 +50,15 @@ type DemoScenario =
   | 'standard'
   | 'blocked_only'
   | 'revenue_failure'
-  | 'education_failure';
+  | 'education_failure'
+  | 'revenue_timeout'
+  | 'residence_malformed'
+  | 'record_not_found'
+  | 'unauthorized_service'
+  | 'policy_bypass'
+  | 'duplicate_request'
+  | 'invalid_request'
+  | 'rate_limit';
 
 export const ScholarshipPage: React.FC = () => {
   const [formData, setFormData] = useState<ApplicantFormData>(DEFAULT_FORM);
@@ -122,12 +130,15 @@ export const ScholarshipPage: React.FC = () => {
     setIsInitiating(true);
 
     try {
+      let service = 'SCHOLARSHIP';
+      let applicantData = { ...formData };
       let requestedData = [
         'studentName',
         'marksPercentage',
         'annualIncome',
         'domicileState'
       ];
+      let simulateFailure: any = undefined;
 
       if (selectedScenario === 'data_minimization') {
         // V3 Primary Showcase: Request 6 fields (including 2 extraneous sensitive fields)
@@ -142,18 +153,36 @@ export const ScholarshipPage: React.FC = () => {
       } else if (selectedScenario === 'blocked_only') {
         // Test 4: Request ONLY blocked fields
         requestedData = ['bankBalance', 'fullAddress'];
+      } else if (selectedScenario === 'revenue_failure') {
+        simulateFailure = { department: 'revenue', failureType: 'FAILURE', reason: 'Simulated department registry outage / expired certificate demo' };
+      } else if (selectedScenario === 'education_failure') {
+        simulateFailure = { department: 'education', failureType: 'FAILURE', reason: 'Candidate academic record not found in Education database' };
+      } else if (selectedScenario === 'revenue_timeout') {
+        simulateFailure = { department: 'revenue', failureType: 'TIMEOUT', reason: 'Revenue Gateway 5000ms network timeout simulation' };
+      } else if (selectedScenario === 'residence_malformed') {
+        simulateFailure = { department: 'residence', failureType: 'MALFORMED_RESPONSE', reason: 'Residence provider returned non-conforming data structure' };
+      } else if (selectedScenario === 'record_not_found') {
+        simulateFailure = { department: 'education', failureType: 'RECORD_NOT_FOUND', reason: 'Applicant academic record not found in registry' };
+      } else if (selectedScenario === 'unauthorized_service') {
+        service = 'UNREGISTERED_COMMERCIAL_LOAN';
+      } else if (selectedScenario === 'policy_bypass') {
+        requestedData = ['studentName', 'bankBalance', 'propertyDetails'];
+      } else if (selectedScenario === 'invalid_request') {
+        applicantData.name = ''; // Trigger 400 validation error
+      } else if (selectedScenario === 'rate_limit') {
+        // Trigger rapid requests to test 429 rate limiter
+        for (let i = 0; i < 4; i++) {
+          await initiateVerification({
+            service: 'SCHOLARSHIP',
+            applicant: formData,
+            requestedData: ['studentName']
+          });
+        }
       }
 
-      const simulateFailure =
-        selectedScenario === 'revenue_failure'
-          ? { department: 'revenue' as const, reason: 'Simulated department registry outage / expired certificate demo' }
-          : selectedScenario === 'education_failure'
-          ? { department: 'education' as const, reason: 'Candidate academic record not found in Education database' }
-          : undefined;
-
       const payload = {
-        service: 'SCHOLARSHIP',
-        applicant: formData,
+        service,
+        applicant: applicantData,
         requestedData,
         purpose: 'Scholarship Eligibility',
         simulateFailure
@@ -185,6 +214,18 @@ export const ScholarshipPage: React.FC = () => {
         requestId: pendingConsent.requestId,
         decision
       });
+
+      // If duplicate request scenario is selected, immediately replay consent to demonstrate 409 conflict
+      if (selectedScenario === 'duplicate_request') {
+        try {
+          await submitConsentDecision({
+            requestId: pendingConsent.requestId,
+            decision
+          });
+        } catch (dupErr: any) {
+          setError(`[Security Check: Duplicate Replay Detected] ${dupErr.message}`);
+        }
+      }
 
       if (decision === 'ALLOW') {
         // Stepper animation runs for visual clarity in SIH demo
@@ -283,7 +324,7 @@ export const ScholarshipPage: React.FC = () => {
         <div className="mt-5 p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
           <div className="flex items-center space-x-2 text-slate-700 font-medium">
             <Sliders className="w-4 h-4 text-sky-700" />
-            <span className="font-bold">SIH V3 Demo Scenario:</span>
+            <span className="font-bold">EKSetu V6 Security & Demo Scenarios:</span>
           </div>
           <div className="flex items-center space-x-2">
             <select
@@ -292,21 +333,51 @@ export const ScholarshipPage: React.FC = () => {
               disabled={isInitiating || pendingConsent !== null || isOrchestrating || verificationResult !== null}
               className="bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-60"
             >
-              <option value="data_minimization">
-                Data Minimization Demo (6 Requested → 4 Allowed, 2 Blocked by Policy)
-              </option>
-              <option value="standard">
-                Standard Verification (4 Required Fields → Full ALLOW)
-              </option>
-              <option value="blocked_only">
-                Only Blocked Fields Demo (Bank Balance & Full Address → POLICY_DENIED)
-              </option>
-              <option value="revenue_failure">
-                Simulate Revenue Registry Failure (Revenue = FAILED, Overall = PARTIAL_VERIFIED)
-              </option>
-              <option value="education_failure">
-                Simulate Education Registry Failure (Education = FAILED, Overall = PARTIAL_VERIFIED)
-              </option>
+              <optgroup label="V3/V4 Baseline Scenarios">
+                <option value="data_minimization">
+                  Data Minimization (6 Requested → 4 Allowed, 2 Blocked)
+                </option>
+                <option value="standard">
+                  Standard Verification (All Providers Succeed)
+                </option>
+                <option value="blocked_only">
+                  Only Blocked Fields (POLICY_DENIED)
+                </option>
+              </optgroup>
+              <optgroup label="V6 Provider Failure & Resilience">
+                <option value="education_failure">
+                  Education Provider Failure (Education FAILED → PARTIAL_VERIFIED)
+                </option>
+                <option value="revenue_failure">
+                  Revenue Provider Failure (Revenue FAILED → PARTIAL_VERIFIED)
+                </option>
+                <option value="revenue_timeout">
+                  Provider Timeout (Revenue Gateway 5s Timeout)
+                </option>
+                <option value="residence_malformed">
+                  Malformed Provider Response (Residence Contract Violation)
+                </option>
+                <option value="record_not_found">
+                  Record Not Found (Education Registry Missing Record)
+                </option>
+              </optgroup>
+              <optgroup label="V6 Security & Abuse Protection">
+                <option value="unauthorized_service">
+                  Unauthorized Service (403 AUTHORIZATION_FAILED)
+                </option>
+                <option value="policy_bypass">
+                  Policy Bypass Attempt (Server Ignores Client allowedFields)
+                </option>
+                <option value="duplicate_request">
+                  Duplicate Request / Replay (409 Conflict)
+                </option>
+                <option value="invalid_request">
+                  Invalid Request Body (400 INVALID_REQUEST)
+                </option>
+                <option value="rate_limit">
+                  Rate Limiting Test (Rapid Requests → 429 RATE_LIMITED)
+                </option>
+              </optgroup>
             </select>
           </div>
         </div>
