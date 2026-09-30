@@ -177,3 +177,125 @@ export async function fetchCitizenRequestDetail(
   }
   return response.json();
 }
+
+/**
+ * V8: Fetch public service registry
+ */
+export async function fetchPublicServices(): Promise<{
+  success: boolean;
+  count: number;
+  services: any[];
+}> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/services`);
+  if (!response.ok) throw new Error('Failed to fetch services');
+  return response.json();
+}
+
+/**
+ * V8: Fetch single service health
+ */
+export async function fetchServiceHealth(serviceId: string): Promise<any> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/services/${serviceId}/health`);
+  if (!response.ok) throw new Error(`Failed to check health for ${serviceId}`);
+  return response.json();
+}
+
+/**
+ * V8 Admin: Fetch detailed services list (protected)
+ */
+export async function fetchAdminServices(adminKey?: string): Promise<{
+  success: boolean;
+  count: number;
+  services: any[];
+}> {
+  const headers: Record<string, string> = {};
+  if (adminKey) headers['x-admin-key'] = adminKey;
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/admin/services`, { headers });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || errorData.error || `Admin API error ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * V8 Admin: Register a new service
+ */
+export async function registerAdminService(serviceData: any, adminKey?: string): Promise<any> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (adminKey) headers['x-admin-key'] = adminKey;
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/admin/services`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(serviceData)
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || errorData.error || `Registration failed with ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * V8 Admin: Update service status (ACTIVE, DISABLED, MAINTENANCE)
+ */
+export async function updateAdminServiceStatus(serviceId: string, status: string, adminKey?: string): Promise<any> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (adminKey) headers['x-admin-key'] = adminKey;
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/admin/services/${serviceId}/status`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ status })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || errorData.error || `Status update failed with ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * V8 Admin: Fetch operational metrics
+ */
+export async function fetchAdminMetrics(adminKey?: string): Promise<{
+  success: boolean;
+  metrics: any;
+}> {
+  const headers: Record<string, string> = {};
+  if (adminKey) headers['x-admin-key'] = adminKey;
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/admin/metrics`, { headers });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || errorData.error || `Failed to fetch metrics: ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
+ * V8 Admin: Fetch security events
+ */
+export async function fetchAdminSecurityEvents(adminKey?: string, type?: string): Promise<{
+  success: boolean;
+  count: number;
+  events: any[];
+}> {
+  const headers: Record<string, string> = {};
+  if (adminKey) headers['x-admin-key'] = adminKey;
+
+  let url = `${API_BASE_URL}/api/v1/admin/security/events?limit=50`;
+  if (type) url += `&type=${encodeURIComponent(type)}`;
+
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || errorData.error || `Failed to fetch security events: ${response.status}`);
+  }
+  return response.json();
+}
+

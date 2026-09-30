@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { checkGatewayHealth } from '../services/api';
-import { ShieldCheck, Activity } from 'lucide-react';
+import { ShieldCheck, Activity, Server } from 'lucide-react';
 
 interface HeaderProps {
   currentPath: string;
@@ -58,18 +58,18 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
           <div>
             <div className="flex items-center space-x-2">
               <h1 className="text-xl font-bold tracking-tight text-[#0F2642]">EKSetu</h1>
-              <span className="text-xs bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded border border-emerald-200">
-                V5 Citizen Transparency
+              <span className="text-xs bg-sky-100 text-sky-800 font-semibold px-2 py-0.5 rounded border border-sky-200">
+                V8 Operations & Registry
               </span>
             </div>
             <p className="text-xs text-slate-500 font-medium">Government Interoperability Platform</p>
           </div>
         </div>
 
-        <nav className="flex items-center space-x-2 sm:space-x-4">
+        <nav className="flex items-center space-x-2 sm:space-x-3">
           <button
             onClick={() => onNavigate('/')}
-            className={`px-3.5 py-1.5 rounded text-sm font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
               currentPath === '/'
                 ? 'bg-slate-100 text-[#0F2642] font-semibold'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
@@ -79,7 +79,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
           </button>
           <button
             onClick={() => onNavigate('/scholarship')}
-            className={`px-3.5 py-1.5 rounded text-sm font-medium transition-colors flex items-center space-x-1.5 ${
+            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors flex items-center space-x-1.5 ${
               currentPath === '/scholarship'
                 ? 'bg-[#0F2642] text-white shadow-sm'
                 : 'bg-sky-50 text-sky-800 hover:bg-sky-100 border border-sky-200'
@@ -90,7 +90,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
           </button>
           <button
             onClick={() => onNavigate('/transparency')}
-            className={`px-3.5 py-1.5 rounded text-sm font-medium transition-colors flex items-center space-x-1.5 ${
+            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors flex items-center space-x-1.5 ${
               currentPath === '/transparency'
                 ? 'bg-emerald-800 text-white shadow-sm'
                 : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200'
@@ -98,6 +98,17 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
           >
             <ShieldCheck className="w-3.5 h-3.5" />
             <span>My Data Usage</span>
+          </button>
+          <button
+            onClick={() => onNavigate('/admin/operations')}
+            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors flex items-center space-x-1.5 ${
+              currentPath === '/admin/operations'
+                ? 'bg-purple-900 text-white shadow-sm'
+                : 'bg-purple-50 text-purple-800 hover:bg-purple-100 border border-purple-200'
+            }`}
+          >
+            <Server className="w-3.5 h-3.5" />
+            <span>Operations</span>
           </button>
         </nav>
       </div>

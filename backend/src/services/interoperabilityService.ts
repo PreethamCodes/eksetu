@@ -18,6 +18,10 @@ import { ConsentService } from './consentService';
 import { AuthorizationService } from './authorizationService';
 import { PolicyService } from './policyService';
 import { AuditService } from './auditService';
+import { ServiceRegistry } from '../registry/serviceRegistry';
+import { ServiceValidation } from '../registry/serviceValidation';
+import { MetricsService } from '../operations/metricsService';
+import { SecurityEventService } from '../operations/securityEventService';
 
 // In-memory trace store for auditability of ongoing flows
 const activeRequestTraces: Map<string, TraceStep[]> = new Map();
@@ -101,6 +105,39 @@ export class InteroperabilityService {
       throw err;
     }
 
+    // V8: Service Capability Validation
+    if (payload.requiredCapability) {
+      const targetProvider = payload.targetProvider || (payload.providerSelection?.education) || 'EDUCATION';
+      const service = ServiceRegistry.getServiceById(targetProvider);
+      const isSupported = service && ServiceValidation.supportsCapability(service, payload.requiredCapability);
+
+      if (!isSupported) {
+        await AuditService.recordEvent({
+          requestId,
+          eventType: 'CAPABILITY_NOT_SUPPORTED',
+          service: payload.service,
+          provider: targetProvider,
+          status: 'FAILED',
+          metadata: {
+            requiredCapability: payload.requiredCapability,
+            targetProvider,
+            reason: `Capability '${payload.requiredCapability}' is not supported by service '${targetProvider}'`
+          }
+        });
+        await SecurityEventService.recordSecurityEvent({
+          eventType: 'CAPABILITY_NOT_SUPPORTED',
+          callerId: payload.service,
+          reason: `Requested capability '${payload.requiredCapability}' not supported by '${targetProvider}'`,
+          details: { requestId, requiredCapability: payload.requiredCapability, targetProvider }
+        });
+        const err: any = new Error(`Capability '${payload.requiredCapability}' is not supported by service '${targetProvider}'`);
+        err.code = 'SERVICE_CAPABILITY_NOT_SUPPORTED';
+        err.statusCode = 422;
+        err.requestId = requestId;
+        throw err;
+      }
+    }
+
     // Save initial request record in CONSENT_PENDING state before recording audit events
     await DatabaseService.createRequestRecord(requestId, payload.service, payload, 'CONSENT_PENDING');
 
@@ -177,6 +214,7 @@ export class InteroperabilityService {
     requestId: string,
     rawDecision: string
   ): Promise<AggregatedVerificationResult> {
+    const startTime = Date.now();
     // 1. Validate decision value
     const normalizedDecision = rawDecision.toUpperCase();
     if (!['ALLOW', 'DENY', 'GRANTED', 'DENIED'].includes(normalizedDecision)) {
@@ -501,17 +539,65 @@ export class InteroperabilityService {
       const isEduSimTarget = failDept === 'education' || simulateFailure?.providerId === eduProvider.providerId;
       const simConfig = isEduSimTarget ? (simulateFailure || true) : undefined;
 
-      const providerCall = await InteroperabilityService.callProviderWithTimeout(
-        eduProvider.providerName,
-        () => eduProvider.verify({
+      const eduService = ServiceRegistry.getServiceById(eduProvider.providerId);
+      const isEduDisabled = eduService && (eduService.status === 'DISABLED' || !eduService.enabled);
+
+      if (isEduDisabled) {
+        const verifiedAt = new Date().toISOString();
+        sources.push({
+          department: eduProvider.department,
+          providerId: eduProvider.providerId,
+          protocol: eduProvider.protocol,
+          status: 'FAILED',
+          verifiedAt,
+          error: `Provider ${eduProvider.providerName} (${eduProvider.providerId}) is currently DISABLED (SERVICE_UNAVAILABLE)`
+        });
+
+        verifiedData.education = {
+          studentName: applicant.name,
+          qualification: applicant.qualification || 'Unverified',
+          marksPercentage: applicant.marksPercentage,
+          status: 'FAILED',
+          verified: false
+        };
+
+        await AuditService.recordEvent({
           requestId,
+          eventType: 'SERVICE_UNAVAILABLE',
           service: requestRecord.service,
-          applicant,
-          requestedFields: policyResult.allowedFields, // Pre-filtered by Policy Engine (Request Minimization)!
-          purpose,
-          simulateFailure: typeof simConfig === 'object' ? simConfig : (simConfig ? { failureType: 'FAILURE' } : undefined)
-        })
-      );
+          provider: eduProvider.providerId,
+          status: 'FAILED',
+          metadata: {
+            reason: `Service '${eduProvider.providerId}' is DISABLED`,
+            department: eduProvider.department
+          }
+        });
+
+        await SecurityEventService.recordSecurityEvent({
+          eventType: 'SERVICE_DISABLED',
+          callerId: requestRecord.service,
+          reason: `Verification attempted against disabled provider ${eduProvider.providerId}`,
+          details: { requestId, providerId: eduProvider.providerId }
+        });
+
+        trace.push({
+          step: 'PROVIDER_DISABLED',
+          message: `${eduProvider.providerName} is administratively DISABLED. Verification not routed.`,
+          status: 'FAILED',
+          timestamp: verifiedAt
+        });
+      } else {
+        const providerCall = await InteroperabilityService.callProviderWithTimeout(
+          eduProvider.providerName,
+          () => eduProvider.verify({
+            requestId,
+            service: requestRecord.service,
+            applicant,
+            requestedFields: policyResult.allowedFields, // Pre-filtered by Policy Engine (Request Minimization)!
+            purpose,
+            simulateFailure: typeof simConfig === 'object' ? simConfig : (simConfig ? { failureType: 'FAILURE' } : undefined)
+          })
+        );
 
       const verifiedAt = new Date().toISOString();
 
@@ -689,6 +775,7 @@ export class InteroperabilityService {
         }
       }
     }
+  }
 
     // 2. Revenue Department Provider (Only called if allowed)
     if (isIncomeAllowed) {
@@ -702,10 +789,54 @@ export class InteroperabilityService {
       });
 
       const simConfig = (failDept === 'revenue') ? (simulateFailure || true) : undefined;
-      const providerCall = await InteroperabilityService.callProviderWithTimeout(
-        'Revenue Department',
-        () => RevenueProvider.verify(applicant, simConfig)
-      );
+
+      const revService = ServiceRegistry.getServiceById('REVENUE');
+      const isRevDisabled = revService && (revService.status === 'DISABLED' || !revService.enabled);
+
+      if (isRevDisabled) {
+        const verifiedAt = new Date().toISOString();
+        sources.push({
+          department: RevenueProvider.departmentName,
+          providerId: 'REVENUE',
+          protocol: 'REST',
+          status: 'FAILED',
+          verifiedAt,
+          error: `Provider Revenue Department (REVENUE) is currently DISABLED (SERVICE_UNAVAILABLE)`
+        });
+
+        verifiedData.income = {
+          annualIncome: applicant.annualIncome || 0,
+          status: 'FAILED',
+          verified: false
+        };
+
+        await AuditService.recordEvent({
+          requestId,
+          eventType: 'SERVICE_UNAVAILABLE',
+          service: requestRecord.service,
+          provider: 'REVENUE',
+          status: 'FAILED',
+          metadata: { reason: `Service 'REVENUE' is DISABLED`, department: 'Revenue Department' }
+        });
+
+        await SecurityEventService.recordSecurityEvent({
+          eventType: 'SERVICE_DISABLED',
+          callerId: requestRecord.service,
+          reason: `Verification attempted against disabled provider REVENUE`,
+          details: { requestId, providerId: 'REVENUE' }
+        });
+
+        trace.push({
+          step: 'PROVIDER_DISABLED',
+          message: `Revenue Department is administratively DISABLED. Verification not routed.`,
+          status: 'FAILED',
+          timestamp: verifiedAt
+        });
+      } else {
+        const providerCall = await InteroperabilityService.callProviderWithTimeout(
+          'Revenue Department',
+          () => RevenueProvider.verify(applicant, simConfig)
+        );
 
       const verifiedAt = new Date().toISOString();
 
@@ -853,6 +984,7 @@ export class InteroperabilityService {
         }
       }
     }
+  }
 
     // 3. Residence Department Provider (Only called if allowed)
     if (isResidenceAllowed) {
@@ -866,10 +998,55 @@ export class InteroperabilityService {
       });
 
       const simConfig = (failDept === 'residence') ? (simulateFailure || true) : undefined;
-      const providerCall = await InteroperabilityService.callProviderWithTimeout(
-        'Residence Department',
-        () => ResidenceProvider.verify(applicant, simConfig)
-      );
+
+      const resService = ServiceRegistry.getServiceById('RESIDENCE');
+      const isResDisabled = resService && (resService.status === 'DISABLED' || !resService.enabled);
+
+      if (isResDisabled) {
+        const verifiedAt = new Date().toISOString();
+        sources.push({
+          department: ResidenceProvider.departmentName,
+          providerId: 'RESIDENCE',
+          protocol: 'REST',
+          status: 'FAILED',
+          verifiedAt,
+          error: `Provider Residence Department (RESIDENCE) is currently DISABLED (SERVICE_UNAVAILABLE)`
+        });
+
+        verifiedData.residence = {
+          state: applicant.residenceState || 'Unknown',
+          domicileState: applicant.residenceState || 'Unknown',
+          status: 'FAILED',
+          verified: false
+        };
+
+        await AuditService.recordEvent({
+          requestId,
+          eventType: 'SERVICE_UNAVAILABLE',
+          service: requestRecord.service,
+          provider: 'RESIDENCE',
+          status: 'FAILED',
+          metadata: { reason: `Service 'RESIDENCE' is DISABLED`, department: 'Residence Department' }
+        });
+
+        await SecurityEventService.recordSecurityEvent({
+          eventType: 'SERVICE_DISABLED',
+          callerId: requestRecord.service,
+          reason: `Verification attempted against disabled provider RESIDENCE`,
+          details: { requestId, providerId: 'RESIDENCE' }
+        });
+
+        trace.push({
+          step: 'PROVIDER_DISABLED',
+          message: `Residence Department is administratively DISABLED. Verification not routed.`,
+          status: 'FAILED',
+          timestamp: verifiedAt
+        });
+      } else {
+        const providerCall = await InteroperabilityService.callProviderWithTimeout(
+          'Residence Department',
+          () => ResidenceProvider.verify(applicant, simConfig)
+        );
 
       const verifiedAt = new Date().toISOString();
 
@@ -1020,6 +1197,7 @@ export class InteroperabilityService {
         }
       }
     }
+  }
 
     // Compute overall verification status
     const totalSources = sources.length;
@@ -1029,7 +1207,12 @@ export class InteroperabilityService {
     if (totalSources === 0) {
       overallStatus = 'POLICY_DENIED';
     } else if (verifiedSourcesCount === 0) {
-      overallStatus = 'VERIFICATION_FAILED';
+      const hasDisabled = sources.some(s => s.error && s.error.includes('DISABLED'));
+      if (hasDisabled) {
+        overallStatus = 'SERVICE_UNAVAILABLE';
+      } else {
+        overallStatus = 'VERIFICATION_FAILED';
+      }
     } else if (verifiedSourcesCount < totalSources) {
       overallStatus = 'PARTIAL_VERIFIED';
     }
@@ -1058,6 +1241,8 @@ export class InteroperabilityService {
     let finalEventType: AuditEventType = 'VERIFICATION_COMPLETED';
     if (overallStatus === 'VERIFICATION_FAILED') {
       finalEventType = 'VERIFICATION_FAILED';
+    } else if (overallStatus === 'SERVICE_UNAVAILABLE') {
+      finalEventType = 'SERVICE_UNAVAILABLE';
     } else if (overallStatus === 'PARTIAL_VERIFIED') {
       finalEventType = 'VERIFICATION_PARTIAL';
     }
@@ -1088,7 +1273,7 @@ export class InteroperabilityService {
     trace.push({
       step: 'VERIFICATION_COMPLETE',
       message: `Department verification completed. Final status: ${overallStatus}`,
-      status: overallStatus === 'VERIFICATION_FAILED' ? 'FAILED' : 'SUCCESS',
+      status: overallStatus === 'VERIFICATION_FAILED' || overallStatus === 'SERVICE_UNAVAILABLE' ? 'FAILED' : 'SUCCESS',
       timestamp: new Date().toISOString()
     });
 
@@ -1102,7 +1287,7 @@ export class InteroperabilityService {
       status: overallStatus,
       consentStatus: 'GRANTED',
       authorizationStatus: 'AUTHORIZED',
-      dataReleased: overallStatus !== 'VERIFICATION_FAILED',
+      dataReleased: overallStatus !== 'VERIFICATION_FAILED' && overallStatus !== 'SERVICE_UNAVAILABLE',
       data: dataPackage,
       provenance,
       auditEvents,
@@ -1117,6 +1302,9 @@ export class InteroperabilityService {
 
     // Save final record to database
     await DatabaseService.completeRequestRecord(requestId, result);
+
+    // Record operational metrics (V8)
+    MetricsService.recordRequest(overallStatus, Date.now() - startTime, requestRecord.service);
 
     return result;
   }

@@ -392,4 +392,51 @@ export class DatabaseService {
 
     return inMemoryAuditEvents.get(requestId) || [];
   }
+
+  /**
+   * Retrieve all audit events (for operations / security monitoring)
+   */
+  static async getAllAuditEvents(): Promise<AuditEvent[]> {
+    const eventMap = new Map<string, AuditEvent>();
+
+    // Include in-memory events (covers system/registry lifecycle events)
+    for (const events of inMemoryAuditEvents.values()) {
+      for (const ev of events) {
+        eventMap.set(ev.id, ev);
+      }
+    }
+
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('audit_events')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(200);
+
+        if (!error && data && data.length > 0) {
+          for (const d of data) {
+            eventMap.set(d.id, {
+              id: d.id,
+              requestId: d.request_id,
+              eventType: d.event_type,
+              service: d.service,
+              provider: d.provider,
+              status: d.status,
+              metadata: d.metadata,
+              createdAt: d.created_at,
+              timestamp: d.created_at
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[DB] Supabase query all audit error:', err);
+      }
+    }
+
+    return Array.from(eventMap.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }
 }
+

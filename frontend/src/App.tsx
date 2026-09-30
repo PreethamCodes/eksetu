@@ -4,6 +4,7 @@ import { Footer } from './components/Footer';
 import { LandingPage } from './pages/LandingPage';
 import { ScholarshipPage } from './pages/ScholarshipPage';
 import { CitizenTransparencyDashboard } from './components/CitizenTransparencyDashboard';
+import { AdminOperationsPage } from './pages/AdminOperationsPage';
 
 export function App() {
   const [currentPath, setCurrentPath] = useState<string>('/scholarship');
@@ -21,6 +22,8 @@ export function App() {
               onClose={() => setCurrentPath('/scholarship')}
             />
           </div>
+        ) : currentPath === '/admin/operations' ? (
+          <AdminOperationsPage />
         ) : (
           <ScholarshipPage />
         )}

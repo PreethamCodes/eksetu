@@ -13,7 +13,10 @@ export type VerificationStatus =
   | 'FAILED'
   | 'PROVIDER_ERROR'
   | 'PROVIDER_TIMEOUT'
-  | 'INVALID_REQUEST';
+  | 'INVALID_REQUEST'
+  | 'SERVICE_UNAVAILABLE'
+  | 'SERVICE_CAPABILITY_NOT_SUPPORTED'
+  | 'SERVICE_NOT_FOUND';
 
 export type ConsentDecision = 'PENDING' | 'GRANTED' | 'DENIED';
 export type ConsentType = 'ONE_TIME';
@@ -55,6 +58,8 @@ export interface VerificationRequestInput {
   applicant: ApplicantInfo;
   requestedData: string[];
   purpose?: string;
+  requiredCapability?: string;
+  targetProvider?: string;
   providerSelection?: {
     education?: 'EDUCATION' | 'LEGACY_EDUCATION';
   };
@@ -172,7 +177,17 @@ export type AuditEventType =
   | 'LEGACY_XML_PARSED'
   | 'LEGACY_XML_VALIDATION_FAILED'
   | 'LEGACY_PROVIDER_TIMEOUT'
-  | 'LEGACY_PROVIDER_FAILED';
+  | 'LEGACY_PROVIDER_FAILED'
+  // V8 Registry, Security & Operations Audit Events
+  | 'SERVICE_REGISTERED'
+  | 'SERVICE_ENABLED'
+  | 'SERVICE_DISABLED'
+  | 'SERVICE_STATUS_CHANGED'
+  | 'SERVICE_HEALTH_CHECKED'
+  | 'SERVICE_NOT_FOUND'
+  | 'SERVICE_UNAVAILABLE'
+  | 'CAPABILITY_NOT_SUPPORTED'
+  | 'ADMIN_ACCESS_DENIED';
 
 export interface AuditEvent {
   id: string;

@@ -11,6 +11,12 @@ export const TRUSTED_SERVICES: Record<string, TrustedService> = {
     serviceName: 'Scholarship Service',
     status: 'ACTIVE',
     allowedScopes: ['education', 'income', 'residence']
+  },
+  SCHOLARSHIP_PORTAL: {
+    serviceId: 'SCHOLARSHIP',
+    serviceName: 'Scholarship Service',
+    status: 'ACTIVE',
+    allowedScopes: ['education', 'income', 'residence']
   }
 };
 

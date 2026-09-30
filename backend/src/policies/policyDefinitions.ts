@@ -60,3 +60,8 @@ export const POLICIES: Record<string, PolicyRuleDefinition> = {
     }
   }
 };
+
+POLICIES['SCHOLARSHIP_PORTAL:SCHOLARSHIP_ELIGIBILITY'] = {
+  ...POLICIES['SCHOLARSHIP:SCHOLARSHIP_ELIGIBILITY'],
+  service: 'SCHOLARSHIP_PORTAL'
+};
