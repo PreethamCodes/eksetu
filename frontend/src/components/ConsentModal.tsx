@@ -84,11 +84,11 @@ export const ConsentModal: React.FC<ConsentModalProps> = ({
           <div className="flex items-center space-x-2.5 mb-1.5">
             <ShieldCheck className="w-5 h-5 text-sky-400" />
             <span className="text-xs font-bold uppercase tracking-wider text-sky-300">
-              EKSetu Citizen Authorization
+              EkSetu Citizen Authorization
             </span>
           </div>
           <h3 className="text-xl font-bold text-white">
-            EKSetu Consent Request
+            EkSetu Consent Request
           </h3>
           <p className="text-xs text-slate-300 mt-1">
             Scholarship Eligibility Verification
@@ -126,7 +126,7 @@ export const ConsentModal: React.FC<ConsentModalProps> = ({
             </div>
             <div className="col-span-2 pt-1">
               <span className="text-slate-400 font-semibold block text-[11px] uppercase">
-                Request ID
+                Reference number:
               </span>
               <span className="font-mono font-bold text-sky-800 text-xs">
                 {consentData.requestId}
@@ -181,7 +181,7 @@ export const ConsentModal: React.FC<ConsentModalProps> = ({
           {/* Citizen Notice / Plain Language */}
           <div className="p-3.5 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-900 leading-relaxed">
             <p>
-              Your information will be used only to verify your eligibility for this scholarship application. EKSetu will request the selected information from the relevant government data providers.
+              Your information will be used only to verify your eligibility for this scholarship application. EkSetu will request the selected information from the relevant government data providers.
             </p>
             <p className="font-bold mt-1 text-amber-950">
               Consent allows the request to proceed. Policy determines which information can actually be released.
@@ -190,7 +190,7 @@ export const ConsentModal: React.FC<ConsentModalProps> = ({
         </div>
 
         {/* Action Buttons (DENY / ALLOW) */}
-        <div className="p-5 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-end gap-3 flex-shrink-0">
+        <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-200 flex flex-col-reverse sm:flex-row items-center justify-end gap-3 flex-shrink-0">
           <button
             type="button"
             disabled={submitting}
@@ -198,7 +198,7 @@ export const ConsentModal: React.FC<ConsentModalProps> = ({
             className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-rose-300 bg-white hover:bg-rose-50 text-rose-700 font-bold text-xs transition-colors flex items-center justify-center space-x-1.5 disabled:opacity-50"
           >
             <ShieldAlert className="w-4 h-4 text-rose-600" />
-            <span>DENY ACCESS</span>
+            <span>Deny access</span>
           </button>
 
           <button
@@ -208,7 +208,7 @@ export const ConsentModal: React.FC<ConsentModalProps> = ({
             className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#0F2642] hover:bg-[#1A4472] text-white font-bold text-xs shadow-md transition-colors flex items-center justify-center space-x-2 disabled:opacity-50"
           >
             <ShieldCheck className="w-4 h-4 text-sky-400" />
-            <span>ALLOW & EVALUATE POLICY</span>
+            <span>Allow & continue</span>
           </button>
         </div>
       </div>

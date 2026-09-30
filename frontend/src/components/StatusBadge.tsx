@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckCircle2, AlertTriangle, XCircle, Clock, ShieldAlert, KeyRound, ShieldBan } from 'lucide-react';
 import { VerificationStatus } from '../types';
+import { getVerificationStatusLabel } from '../utils/displayLabels';
 
 interface StatusBadgeProps {
   status: VerificationStatus | 'PENDING' | 'PARTIAL_ALLOW';
@@ -22,81 +23,81 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'md' })
 
   if (status === 'VERIFIED') {
     return (
-      <span className={`inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 border border-emerald-300 ${sizeClasses[size]}`}>
+      <span className={`inline-flex items-center rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 ${sizeClasses[size]}`}>
         <CheckCircle2 className={`${iconSizes[size]} text-emerald-600`} />
-        <span>VERIFIED</span>
+        <span>Verified</span>
       </span>
     );
   }
 
   if (status === 'PARTIAL_VERIFIED') {
     return (
-      <span className={`inline-flex items-center rounded-full bg-amber-50 text-amber-800 border border-amber-300 ${sizeClasses[size]}`}>
+      <span className={`inline-flex items-center rounded-full bg-amber-50 text-amber-900 border border-amber-300 ${sizeClasses[size]}`}>
         <AlertTriangle className={`${iconSizes[size]} text-amber-600`} />
-        <span>PARTIALLY VERIFIED</span>
+        <span>Partially verified</span>
       </span>
     );
   }
 
   if (status === 'PARTIAL_ALLOW') {
     return (
-      <span className={`inline-flex items-center rounded-full bg-amber-50 text-amber-800 border border-amber-300 ${sizeClasses[size]}`}>
+      <span className={`inline-flex items-center rounded-full bg-amber-50 text-amber-900 border border-amber-300 ${sizeClasses[size]}`}>
         <AlertTriangle className={`${iconSizes[size]} text-amber-600`} />
-        <span>PARTIAL ALLOW</span>
+        <span>Partially permitted</span>
       </span>
     );
   }
 
   if (status === 'AUTHORIZATION_FAILED') {
     return (
-      <span className={`inline-flex items-center rounded-full bg-rose-50 text-rose-700 border border-rose-300 ${sizeClasses[size]}`}>
+      <span className={`inline-flex items-center rounded-full bg-rose-50 text-rose-800 border border-rose-300 ${sizeClasses[size]}`}>
         <ShieldBan className={`${iconSizes[size]} text-rose-600`} />
-        <span>UNAUTHORIZED SERVICE</span>
+        <span>Service not authorized</span>
       </span>
     );
   }
 
   if (status === 'VERIFICATION_FAILED') {
     return (
-      <span className={`inline-flex items-center rounded-full bg-rose-50 text-rose-700 border border-rose-300 ${sizeClasses[size]}`}>
+      <span className={`inline-flex items-center rounded-full bg-rose-50 text-rose-800 border border-rose-300 ${sizeClasses[size]}`}>
         <XCircle className={`${iconSizes[size]} text-rose-600`} />
-        <span>VERIFICATION FAILED</span>
+        <span>Verification incomplete</span>
       </span>
     );
   }
 
   if (status === 'CONSENT_DENIED') {
     return (
-      <span className={`inline-flex items-center rounded-full bg-rose-50 text-rose-700 border border-rose-300 ${sizeClasses[size]}`}>
+      <span className={`inline-flex items-center rounded-full bg-rose-50 text-rose-800 border border-rose-300 ${sizeClasses[size]}`}>
         <ShieldAlert className={`${iconSizes[size]} text-rose-600`} />
-        <span>CONSENT DENIED</span>
+        <span>Request not approved</span>
       </span>
     );
   }
 
   if (status === 'POLICY_DENIED') {
     return (
-      <span className={`inline-flex items-center rounded-full bg-rose-50 text-rose-700 border border-rose-300 ${sizeClasses[size]}`}>
+      <span className={`inline-flex items-center rounded-full bg-rose-50 text-rose-800 border border-rose-300 ${sizeClasses[size]}`}>
         <ShieldBan className={`${iconSizes[size]} text-rose-600`} />
-        <span>POLICY DENIED</span>
+        <span>Access restricted by policy</span>
       </span>
     );
   }
 
   if (status === 'CONSENT_PENDING') {
     return (
-      <span className={`inline-flex items-center rounded-full bg-sky-50 text-sky-800 border border-sky-300 ${sizeClasses[size]}`}>
+      <span className={`inline-flex items-center rounded-full bg-sky-50 text-sky-900 border border-sky-300 ${sizeClasses[size]}`}>
         <KeyRound className={`${iconSizes[size]} text-sky-600 animate-pulse`} />
-        <span>CONSENT PENDING</span>
+        <span>Approval required</span>
       </span>
     );
   }
 
   if (status === 'REQUEST_DENIED' || status === 'FAILED') {
     return (
-      <span className={`inline-flex items-center rounded-full bg-rose-50 text-rose-700 border border-rose-300 ${sizeClasses[size]}`}>
+      <span className={`inline-flex items-center rounded-full bg-rose-50 text-rose-800 border border-rose-300 ${sizeClasses[size]}`}>
         <XCircle className={`${iconSizes[size]} text-rose-600`} />
-        <span>REQUEST DENIED</span>
+        <span>Request declined</span>
       </span>
     );
   }
@@ -104,7 +105,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'md' })
   return (
     <span className={`inline-flex items-center rounded-full bg-slate-100 text-slate-700 border border-slate-300 ${sizeClasses[size]}`}>
       <Clock className={`${iconSizes[size]} text-slate-500 animate-spin`} />
-      <span>PENDING</span>
+      <span>{getVerificationStatusLabel(status)}</span>
     </span>
   );
 };

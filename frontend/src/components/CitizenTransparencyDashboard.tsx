@@ -7,6 +7,7 @@ import {
   CitizenRequestSummary,
   CitizenTransparencyView
 } from '../types';
+import { getFieldLabel } from '../utils/displayLabels';
 import {
   ShieldCheck,
   Eye,
@@ -119,7 +120,7 @@ export const CitizenTransparencyDashboard: React.FC<CitizenTransparencyDashboard
                 </span>
                 <span className="text-white/40">|</span>
                 <span className="text-xs font-semibold bg-emerald-500/20 text-emerald-200 px-2 py-0.5 rounded border border-emerald-400/30">
-                  V5 Data Usage Visibility
+                  Data Usage Visibility
                 </span>
               </div>
               <h2 className="text-2xl font-black tracking-tight text-white mt-1">
@@ -143,27 +144,29 @@ export const CitizenTransparencyDashboard: React.FC<CitizenTransparencyDashboard
 
         {/* Applicant Identity Switcher & Refresh */}
         <div className="mt-6 pt-5 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <form onSubmit={handleSearchSubmit} className="flex items-center space-x-2 flex-wrap">
+          <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
             <span className="text-sky-200 font-medium">Viewing data for Citizen ID:</span>
-            <input
-              type="text"
-              value={applicantId}
-              onChange={(e) => setApplicantId(e.target.value)}
-              className="bg-white/10 text-white placeholder-sky-200/50 border border-white/20 rounded px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-sky-300 font-mono"
-              placeholder="e.g. SCH-2026-001"
-            />
-            <button
-              type="submit"
-              className="px-2.5 py-1 bg-sky-500 hover:bg-sky-400 text-slate-900 rounded font-bold transition-colors"
-            >
-              Apply
-            </button>
+            <div className="flex items-center space-x-2">
+              <input
+                type="text"
+                value={applicantId}
+                onChange={(e) => setApplicantId(e.target.value)}
+                className="bg-white/10 text-white placeholder-sky-200/50 border border-white/20 rounded px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-sky-300 font-mono flex-1 sm:w-36"
+                placeholder="e.g. SCH-2026-001"
+              />
+              <button
+                type="submit"
+                className="px-3 py-1 bg-sky-500 hover:bg-sky-400 text-slate-900 rounded font-bold transition-colors"
+              >
+                Apply
+              </button>
+            </div>
           </form>
 
           <button
             onClick={() => loadRequests(applicantId)}
             disabled={loadingRequests}
-            className="flex items-center space-x-1.5 text-sky-200 hover:text-white transition-colors"
+            className="flex items-center space-x-1.5 text-sky-200 hover:text-white transition-colors self-start sm:self-auto"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loadingRequests ? 'animate-spin' : ''}`} />
             <span>Refresh Requests</span>
@@ -219,7 +222,7 @@ export const CitizenTransparencyDashboard: React.FC<CitizenTransparencyDashboard
               </p>
             </div>
           ) : (
-            <div className="space-y-2 max-h-[620px] overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-[260px] lg:max-h-[620px] overflow-y-auto pr-1">
               {filteredRequests.map((req) => {
                 const isSelected = req.requestId === selectedRequestId;
                 const isDenied = req.status === 'CONSENT_DENIED' || req.status === 'POLICY_DENIED';
@@ -439,7 +442,7 @@ export const CitizenTransparencyDashboard: React.FC<CitizenTransparencyDashboard
                       {transparencyData.consent.requestedFields.length} Fields
                     </div>
                     <div className="text-[10px] text-slate-500 mt-1 line-clamp-2">
-                      {transparencyData.consent.requestedFields.join(', ')}
+                      {transparencyData.consent.requestedFields.map(f => getFieldLabel(f)).join(', ')}
                     </div>
                   </div>
 
@@ -484,7 +487,7 @@ export const CitizenTransparencyDashboard: React.FC<CitizenTransparencyDashboard
                 <div className="mt-3.5 p-3 rounded-xl bg-sky-50/70 border border-sky-200 text-sky-900 text-xs flex items-start space-x-2.5">
                   <Info className="w-4 h-4 text-sky-600 flex-shrink-0 mt-0.5" />
                   <p className="text-[11px] leading-relaxed">
-                    <span className="font-bold">Citizen Rights Note:</span> Your consent gives EKSetu permission to initiate verification. It does <em>not</em> grant automatic release of every requested field. Unnecessary fields are blocked server-side by EKSetu's data minimization policies.
+                    <span className="font-bold">Citizen Rights Note:</span> Your consent gives EkSetu permission to initiate verification. It does <em>not</em> grant automatic release of every requested field. Unnecessary fields are blocked server-side by EkSetu's data minimization policies.
                   </p>
                 </div>
               </div>
@@ -513,8 +516,8 @@ export const CitizenTransparencyDashboard: React.FC<CitizenTransparencyDashboard
                           className="p-2.5 rounded-lg bg-emerald-50/50 border border-emerald-100 flex items-center justify-between text-xs"
                         >
                           <div>
-                            <span className="font-mono font-bold text-slate-800 text-[11px] block">
-                              {key}
+                            <span className="font-medium text-slate-800 text-xs block">
+                              {getFieldLabel(key)}
                             </span>
                             <span className="text-[10px] text-slate-500">
                               Verified by Government Source
@@ -555,11 +558,11 @@ export const CitizenTransparencyDashboard: React.FC<CitizenTransparencyDashboard
                           className="p-2.5 rounded-lg bg-rose-50/50 border border-rose-100 text-xs"
                         >
                           <div className="flex items-center justify-between">
-                            <span className="font-mono font-bold text-rose-900 text-[11px]">
-                              {item.field}
+                            <span className="font-semibold text-rose-900 text-xs">
+                              {getFieldLabel(item.field)}
                             </span>
                             <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded">
-                              Blocked
+                              Protected
                             </span>
                           </div>
                           <p className="text-[10px] text-slate-600 mt-1 leading-relaxed">
@@ -627,8 +630,8 @@ export const CitizenTransparencyDashboard: React.FC<CitizenTransparencyDashboard
                             </div>
                           )}
 
-                          <div className="text-[11px] text-slate-600 font-mono">
-                            Field: {src.field}
+                          <div className="text-[11px] text-slate-600">
+                            Attribute: <strong className="font-medium text-slate-800">{getFieldLabel(src.field)}</strong>
                           </div>
 
                           <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">

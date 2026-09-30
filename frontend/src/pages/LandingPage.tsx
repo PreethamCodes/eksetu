@@ -11,7 +11,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigateToScholarshi
       {/* Hero Badge */}
       <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold mb-6 border border-emerald-200">
         <span className="w-2 h-2 rounded-full bg-emerald-600 animate-ping" />
-        <span>V3 PROTOTYPE — POLICY ENGINE & DATA MINIMIZATION LAYER</span>
+        <span>POLICY ENGINE & FEDERATED DATA MINIMIZATION</span>
       </div>
 
       {/* Hero Header */}
@@ -20,23 +20,23 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigateToScholarshi
           Connecting Government Services Through Secure Interoperability
         </h1>
         <p className="mt-4 text-base sm:text-lg text-slate-600 leading-relaxed font-normal">
-          EKSetu enables government services to access verified information from multiple departments through a unified interoperability layer — governed by citizen consent, verified service authorization, and purpose-bound data minimization.
+          EkSetu enables government services to access verified information from multiple departments through a unified interoperability layer — governed by citizen consent, verified service authorization, and purpose-bound data minimization.
         </p>
         <p className="mt-2 text-sm text-sky-800 font-semibold italic">
           "Share Proof, Not Databases."
         </p>
 
         {/* CTA Button */}
-        <div className="mt-8 flex flex-wrap items-center gap-4">
+        <div className="mt-8 flex flex-col sm:flex-row sm:items-center gap-4">
           <button
             onClick={onNavigateToScholarship}
-            className="px-6 py-3 rounded-lg bg-[#0F2642] hover:bg-[#1A4472] text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center space-x-2"
+            className="w-full sm:w-auto px-6 py-3 rounded-lg bg-[#0F2642] hover:bg-[#1A4472] text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-2"
           >
-            <span>Try Scholarship Verification (V3)</span>
+            <span>Open Scholarship Portal</span>
             <ArrowRight className="w-4 h-4" />
           </button>
-          <span className="text-xs text-slate-500">
-            Interactive V3 prototype with live Policy Engine data minimization
+          <span className="text-xs text-slate-500 text-center sm:text-left">
+            Interactive demonstration with live Policy Engine data minimization
           </span>
         </div>
       </div>
@@ -83,10 +83,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigateToScholarshi
       {/* Architectural Flow Diagram */}
       <div className="mt-14 bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm">
         <h3 className="text-lg font-bold text-[#0F2642] mb-2">
-          V3 Interoperability, Consent & Policy Architecture
+          Interoperability, Consent & Policy Architecture
         </h3>
         <p className="text-xs text-slate-500 mb-6">
-          The citizen stays in their target service. EKSetu verifies consent, evaluates purpose-bound policies, and strips extraneous data before release.
+          The citizen stays in their target service. EkSetu verifies consent, evaluates purpose-bound policies, and strips extraneous data before release.
         </p>
 
         <div className="flex flex-col lg:flex-row items-center justify-between gap-2.5 p-6 bg-slate-50 rounded-xl border border-slate-200 text-center">

@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Database
 } from 'lucide-react';
+import { getAuditEventLabel, getProviderLabel, humanizeText } from '../utils/displayLabels';
 
 interface VerificationTimelineProps {
   events?: AuditEvent[];
@@ -79,9 +80,9 @@ export const VerificationTimeline: React.FC<VerificationTimelineProps> = ({
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between">
+      <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center space-x-2.5">
-          <History className="w-5 h-5 text-indigo-600" />
+          <History className="w-5 h-5 text-indigo-600 flex-shrink-0" />
           <div>
             <h4 className="font-bold text-slate-800 text-sm">Verification Audit Trail</h4>
             <p className="text-xs text-slate-500">
@@ -89,7 +90,7 @@ export const VerificationTimeline: React.FC<VerificationTimelineProps> = ({
             </p>
           </div>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           {requestId && (
             <span className="font-mono text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
               {requestId}
@@ -121,31 +122,31 @@ export const VerificationTimeline: React.FC<VerificationTimelineProps> = ({
                 </div>
 
                 <div className="bg-slate-50/80 border border-slate-200/80 rounded-lg p-3 hover:border-slate-300 transition-colors">
-                  <div className="flex items-start justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
                     <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                      <span className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-semibold font-mono border ${badge.bg}`}>
+                      <span className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${badge.bg}`}>
                         {badge.icon}
-                        <span>{event.eventType}</span>
+                        <span>{getAuditEventLabel(event.eventType)}</span>
                       </span>
 
                       {event.provider && (
-                        <span className="text-[11px] font-mono font-medium px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded">
-                          {event.provider}
+                        <span className="text-[11px] font-medium px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded">
+                          {getProviderLabel(event.provider)}
                         </span>
                       )}
 
                       {event.service && (
-                        <span className="text-[11px] font-mono font-medium px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded">
+                        <span className="text-[11px] font-medium px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded">
                           {event.service}
                         </span>
                       )}
 
                       <span className="text-[11px] font-medium text-slate-500 uppercase px-1.5 py-0.5 rounded bg-white border border-slate-200">
-                        {event.status}
+                        {humanizeText(event.status)}
                       </span>
                     </div>
 
-                    <span className="text-[11px] font-mono text-slate-400 whitespace-nowrap ml-2">
+                    <span className="text-[11px] font-mono text-slate-400 whitespace-nowrap self-start sm:self-auto">
                       {timeStr}
                     </span>
                   </div>

@@ -3,6 +3,7 @@ import { EducationProvider } from './educationProvider';
 import { RevenueProvider } from './revenueProvider';
 import { ResidenceProvider } from './residenceProvider';
 import { LegacyEducationAdapter } from './legacy/legacyEducationAdapter';
+import { findSimulatedCitizen } from './simulatedCitizens';
 
 export class RestEducationAdapter implements VerificationProvider {
   readonly providerId = 'EDUCATION';
@@ -120,6 +121,12 @@ export class ProviderRegistry {
     if (preferred === 'LEGACY_EDUCATION') {
       return this.providers.get('LEGACY_EDUCATION')!;
     }
+
+    const citizen = findSimulatedCitizen(rawApplicant.applicationId, rawApplicant.name);
+    if (citizen?.isLegacySoap) {
+      return this.providers.get('LEGACY_EDUCATION')!;
+    }
+
     return this.providers.get('EDUCATION')!;
   }
 }

@@ -1,4 +1,5 @@
 import { ApplicantInfo, FailureSimulationConfig, MockDepartmentResponse } from '../models/types';
+import { findSimulatedCitizen } from './simulatedCitizens';
 
 export interface ExtendedRevenueData {
   verified: boolean;
@@ -71,7 +72,27 @@ export class RevenueProvider {
       };
     }
 
-    const annualIncome = applicant.annualIncome !== undefined ? Number(applicant.annualIncome) : 180000;
+    const citizen = findSimulatedCitizen(applicant.applicationId, applicant.name);
+    if (citizen) {
+      if (citizen.revenueStatus === 'EXPIRED') {
+        return {
+          department: this.departmentName,
+          status: 'FAILED',
+          error: 'Revenue Department verification failed: Citizen income certificate expired in tax registry.',
+          verifiedAt
+        };
+      }
+      if (applicant.annualIncome !== undefined && Number(applicant.annualIncome) !== citizen.officialAnnualIncome) {
+        return {
+          department: this.departmentName,
+          status: 'FAILED',
+          error: `Revenue Department verification failed: Declared income (₹${Number(applicant.annualIncome).toLocaleString('en-IN')}) does not match official tax registry record (₹${citizen.officialAnnualIncome.toLocaleString('en-IN')}).`,
+          verifiedAt
+        };
+      }
+    }
+
+    const annualIncome = applicant.annualIncome !== undefined ? Number(applicant.annualIncome) : (citizen?.officialAnnualIncome ?? 180000);
     const incomeStatus = 'VALID';
 
     return {

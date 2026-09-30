@@ -1,4 +1,5 @@
 import { ApplicantInfo, FailureSimulationConfig, MockDepartmentResponse } from '../models/types';
+import { findSimulatedCitizen } from './simulatedCitizens';
 
 export interface ExtendedEducationData {
   verified: boolean;
@@ -73,9 +74,21 @@ export class EducationProvider {
       };
     }
 
-    const studentName = applicant.name || 'Sai Preetham';
-    const qualification = applicant.qualification || "Bachelor's Degree";
-    const marksPercentage = applicant.marksPercentage || 82;
+    const citizen = findSimulatedCitizen(applicant.applicationId, applicant.name);
+    if (citizen) {
+      if (citizen.educationStatus === 'RECORD_NOT_FOUND') {
+        return {
+          department: this.departmentName,
+          status: 'FAILED',
+          error: 'Applicant academic record not found in Education Department database.',
+          verifiedAt
+        };
+      }
+    }
+
+    const studentName = applicant.name || (citizen?.name ?? 'Sai Preetham');
+    const qualification = applicant.qualification || (citizen?.qualification ?? "Bachelor's Degree");
+    const marksPercentage = applicant.marksPercentage || (citizen?.marksPercentage ?? 82);
     const studentStatus = 'GRADUATE';
 
     return {

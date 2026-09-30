@@ -14,18 +14,18 @@ export const RequestTrace: React.FC<RequestTraceProps> = ({ trace, requestId }) 
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm mt-6">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-5 py-4 flex items-center justify-between bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+        className="w-full px-4 sm:px-5 py-3.5 sm:py-4 flex flex-col sm:flex-row sm:items-center justify-between bg-slate-50 hover:bg-slate-100 transition-colors text-left gap-2"
       >
-        <div className="flex items-center space-x-2.5">
-          <GitCommit className="w-4 h-4 text-sky-700" />
-          <span className="text-sm font-bold text-[#0F2642]">
+        <div className="flex flex-wrap items-center gap-2">
+          <GitCommit className="w-4 h-4 text-sky-700 flex-shrink-0" />
+          <span className="text-xs sm:text-sm font-bold text-[#0F2642]">
             View Request Processing Steps (Timestamped Trace)
           </span>
-          <span className="text-xs bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-mono">
+          <span className="text-[11px] sm:text-xs bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-mono">
             {requestId}
           </span>
         </div>
-        <div className="flex items-center space-x-1 text-xs text-sky-800 font-semibold">
+        <div className="flex items-center space-x-1 text-xs text-sky-800 font-semibold self-end sm:self-auto">
           <span>{isOpen ? 'Hide Steps' : 'View Steps'}</span>
           {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </div>
@@ -34,7 +34,7 @@ export const RequestTrace: React.FC<RequestTraceProps> = ({ trace, requestId }) 
       {isOpen && (
         <div className="p-5 sm:p-6 bg-white border-t border-slate-200">
           <p className="text-xs text-slate-500 mb-4">
-            Sequential processing steps executed by EKSetu Gateway across department boundaries. <em>(Note: Lightweight execution trace; full tamper-evident cryptographic provenance is reserved for V4).</em>
+            Sequential processing steps executed by EkSetu Gateway across department boundaries.
           </p>
 
           <div className="relative border-l-2 border-sky-200 ml-4 pl-6 space-y-5">

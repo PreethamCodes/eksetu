@@ -22,7 +22,6 @@ import {
   Sparkles,
   AlertCircle,
   CheckCircle2,
-  Sliders,
   ShieldAlert,
   Loader2,
   ArrowLeft,
@@ -35,6 +34,8 @@ import {
   Eye
 } from 'lucide-react';
 
+import { getFieldLabel } from '../utils/displayLabels';
+
 const DEFAULT_FORM: ApplicantFormData = {
   applicationId: 'SCH-2026-001',
   name: 'Sai Preetham',
@@ -45,30 +46,88 @@ const DEFAULT_FORM: ApplicantFormData = {
   residenceState: 'Telangana'
 };
 
-type DemoScenario =
-  | 'data_minimization'
-  | 'standard'
-  | 'blocked_only'
-  | 'revenue_failure'
-  | 'education_failure'
-  | 'revenue_timeout'
-  | 'residence_malformed'
-  | 'record_not_found'
-  | 'unauthorized_service'
-  | 'policy_bypass'
-  | 'duplicate_request'
-  | 'invalid_request'
-  | 'rate_limit'
-  | 'legacy_soap_normal'
-  | 'legacy_soap_timeout'
-  | 'legacy_soap_malformed'
-  | 'legacy_soap_invalid_status'
-  | 'legacy_soap_not_found'
-  | 'legacy_soap_server_error';
+interface SampleCitizenProfile {
+  id: string;
+  name: string;
+  data: ApplicantFormData;
+  notes: string;
+}
+
+const SAMPLE_CITIZENS: SampleCitizenProfile[] = [
+  {
+    id: 'SCH-2026-001',
+    name: 'Sai Preetham',
+    data: {
+      applicationId: 'SCH-2026-001',
+      name: 'Sai Preetham',
+      dob: '2003-05-14',
+      qualification: "Bachelor's Degree",
+      marksPercentage: 82,
+      annualIncome: 180000,
+      residenceState: 'Telangana'
+    },
+    notes: 'Telangana • ₹1,80,000 • Standard Verification'
+  },
+  {
+    id: 'SCH-2026-042',
+    name: 'Ananya Sharma',
+    data: {
+      applicationId: 'SCH-2026-042',
+      name: 'Ananya Sharma',
+      dob: '2002-11-20',
+      qualification: "Master's Degree",
+      marksPercentage: 91,
+      annualIncome: 450000,
+      residenceState: 'Maharashtra'
+    },
+    notes: 'Maharashtra • ₹4,50,000 • Merit Scholar'
+  },
+  {
+    id: 'SCH-2026-108',
+    name: 'Rohan Verma',
+    data: {
+      applicationId: 'SCH-2026-108',
+      name: 'Rohan Verma',
+      dob: '2004-03-08',
+      qualification: 'Higher Secondary (12th)',
+      marksPercentage: 78,
+      annualIncome: 220000,
+      residenceState: 'Uttar Pradesh'
+    },
+    notes: 'Uttar Pradesh • ₹2,20,000 • Legacy Education Board'
+  },
+  {
+    id: 'SCH-2026-215',
+    name: 'Priya Patel',
+    data: {
+      applicationId: 'SCH-2026-215',
+      name: 'Priya Patel',
+      dob: '2003-09-12',
+      qualification: "Bachelor's Degree",
+      marksPercentage: 88,
+      annualIncome: 310000,
+      residenceState: 'Gujarat'
+    },
+    notes: 'Gujarat • ₹3,10,000 • Standard Verification'
+  },
+  {
+    id: 'SCH-2026-309',
+    name: 'Vikramaditya Rao',
+    data: {
+      applicationId: 'SCH-2026-309',
+      name: 'Vikramaditya Rao',
+      dob: '2001-07-25',
+      qualification: 'Diploma in Engineering',
+      marksPercentage: 65,
+      annualIncome: 850000,
+      residenceState: 'Karnataka'
+    },
+    notes: 'Karnataka • ₹8,50,000 • Higher Income Bracket'
+  }
+];
 
 export const ScholarshipPage: React.FC = () => {
   const [formData, setFormData] = useState<ApplicantFormData>(DEFAULT_FORM);
-  const [selectedScenario, setSelectedScenario] = useState<DemoScenario>('data_minimization');
   const [isInitiating, setIsInitiating] = useState(false);
   const [pendingConsent, setPendingConsent] = useState<ConsentPendingResponse | null>(null);
   const [isSubmittingConsent, setIsSubmittingConsent] = useState(false);
@@ -136,80 +195,24 @@ export const ScholarshipPage: React.FC = () => {
     setIsInitiating(true);
 
     try {
-      let service = 'SCHOLARSHIP';
-      let applicantData = { ...formData };
-      let requestedData = [
+      const service = 'SCHOLARSHIP';
+      const applicantData = { ...formData };
+      // Request standard application fields along with excessive fields to demonstrate data minimization
+      const requestedData = [
         'studentName',
         'marksPercentage',
         'annualIncome',
-        'domicileState'
+        'domicileState',
+        'bankBalance',
+        'fullAddress'
       ];
-      let simulateFailure: any = undefined;
-
-      if (selectedScenario === 'data_minimization') {
-        // V3 Primary Showcase: Request 6 fields (including 2 extraneous sensitive fields)
-        requestedData = [
-          'studentName',
-          'marksPercentage',
-          'annualIncome',
-          'domicileState',
-          'bankBalance',
-          'fullAddress'
-        ];
-      } else if (selectedScenario === 'blocked_only') {
-        // Test 4: Request ONLY blocked fields
-        requestedData = ['bankBalance', 'fullAddress'];
-      } else if (selectedScenario === 'revenue_failure') {
-        simulateFailure = { department: 'revenue', failureType: 'FAILURE', reason: 'Simulated department registry outage / expired certificate demo' };
-      } else if (selectedScenario === 'education_failure') {
-        simulateFailure = { department: 'education', failureType: 'FAILURE', reason: 'Candidate academic record not found in Education database' };
-      } else if (selectedScenario === 'revenue_timeout') {
-        simulateFailure = { department: 'revenue', failureType: 'TIMEOUT', reason: 'Revenue Gateway 5000ms network timeout simulation' };
-      } else if (selectedScenario === 'residence_malformed') {
-        simulateFailure = { department: 'residence', failureType: 'MALFORMED_RESPONSE', reason: 'Residence provider returned non-conforming data structure' };
-      } else if (selectedScenario === 'record_not_found') {
-        simulateFailure = { department: 'education', failureType: 'RECORD_NOT_FOUND', reason: 'Applicant academic record not found in registry' };
-      } else if (selectedScenario === 'unauthorized_service') {
-        service = 'UNREGISTERED_COMMERCIAL_LOAN';
-      } else if (selectedScenario === 'policy_bypass') {
-        requestedData = ['studentName', 'bankBalance', 'propertyDetails'];
-      } else if (selectedScenario === 'invalid_request') {
-        applicantData.name = ''; // Trigger 400 validation error
-      } else if (selectedScenario === 'rate_limit') {
-        // Trigger rapid requests to test 429 rate limiter
-        for (let i = 0; i < 4; i++) {
-          await initiateVerification({
-            service: 'SCHOLARSHIP',
-            applicant: formData,
-            requestedData: ['studentName']
-          });
-        }
-      } else if (selectedScenario === 'legacy_soap_normal') {
-        applicantData.preferredProvider = 'LEGACY_EDUCATION';
-      } else if (selectedScenario === 'legacy_soap_timeout') {
-        applicantData.preferredProvider = 'LEGACY_EDUCATION';
-        simulateFailure = { department: 'education', providerId: 'LEGACY_EDUCATION', failureType: 'TIMEOUT', reason: 'Legacy Education SOAP service timed out (5000ms)' };
-      } else if (selectedScenario === 'legacy_soap_malformed') {
-        applicantData.preferredProvider = 'LEGACY_EDUCATION';
-        simulateFailure = { department: 'education', providerId: 'LEGACY_EDUCATION', failureType: 'MALFORMED_XML', reason: 'Legacy SOAP service returned unparseable XML syntax' };
-      } else if (selectedScenario === 'legacy_soap_invalid_status') {
-        applicantData.preferredProvider = 'LEGACY_EDUCATION';
-        simulateFailure = { department: 'education', providerId: 'LEGACY_EDUCATION', failureType: 'INVALID_STATUS', reason: 'Legacy SOAP response contains invalid status code' };
-      } else if (selectedScenario === 'legacy_soap_not_found') {
-        applicantData.preferredProvider = 'LEGACY_EDUCATION';
-        simulateFailure = { department: 'education', providerId: 'LEGACY_EDUCATION', failureType: 'RECORD_NOT_FOUND', reason: 'Student record not found in Legacy Education registry' };
-      } else if (selectedScenario === 'legacy_soap_server_error') {
-        applicantData.preferredProvider = 'LEGACY_EDUCATION';
-        simulateFailure = { department: 'education', providerId: 'LEGACY_EDUCATION', failureType: 'SERVER_ERROR', reason: 'Legacy SOAP system fault 500' };
-      }
 
       const payload = {
         service,
         applicant: applicantData,
         requestedData,
         purpose: 'Scholarship Eligibility',
-        providerSelection: applicantData.preferredProvider,
-        simulateFailure
+        providerSelection: applicantData.preferredProvider
       };
 
       const pendingRes = await initiateVerification(payload);
@@ -238,18 +241,6 @@ export const ScholarshipPage: React.FC = () => {
         requestId: pendingConsent.requestId,
         decision
       });
-
-      // If duplicate request scenario is selected, immediately replay consent to demonstrate 409 conflict
-      if (selectedScenario === 'duplicate_request') {
-        try {
-          await submitConsentDecision({
-            requestId: pendingConsent.requestId,
-            decision
-          });
-        } catch (dupErr: any) {
-          setError(`[Security Check: Duplicate Replay Detected] ${dupErr.message}`);
-        }
-      }
 
       if (decision === 'ALLOW') {
         // Stepper animation runs for visual clarity in SIH demo
@@ -302,14 +293,14 @@ export const ScholarshipPage: React.FC = () => {
                 </span>
                 <span className="text-slate-300">|</span>
                 <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                  EKSetu V3 Policy & Minimization
+                  EkSetu Interoperability Framework
                 </span>
               </div>
               <h2 className="text-xl sm:text-2xl font-black text-[#0F2642] tracking-tight mt-0.5">
                 National Merit Scholarship Scheme 2026
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Fictional demo service demonstrating citizen consent, policy engine evaluation, and data minimization.
+                Official demonstration service showcasing citizen consent, policy engine evaluation, and data minimization.
               </p>
             </div>
           </div>
@@ -323,19 +314,19 @@ export const ScholarshipPage: React.FC = () => {
                 {formData.applicationId}
               </span>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => setShowTransparencyModal(true)}
-                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold transition-colors shadow-sm"
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-semibold transition-colors shadow-sm flex-1 sm:flex-initial justify-center"
               >
                 <Eye className="w-3.5 h-3.5 text-emerald-700" />
-                <span>My Data Usage (V5)</span>
+                <span>My Data Usage</span>
               </button>
               <button
                 type="button"
                 onClick={() => setTraceLookupOpen(true)}
-                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold transition-colors shadow-sm"
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold transition-colors shadow-sm flex-1 sm:flex-initial justify-center"
               >
                 <History className="w-3.5 h-3.5" />
                 <span>Trace Request by ID</span>
@@ -344,85 +335,41 @@ export const ScholarshipPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Demo Scenario Controller */}
-        <div className="mt-5 p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <div className="flex items-center space-x-2 text-slate-700 font-medium">
-            <Sliders className="w-4 h-4 text-sky-700" />
-            <span className="font-bold">EKSetu V6 Security & Demo Scenarios:</span>
+        {/* Sample Citizen Profiles for Testing */}
+        <div className="mt-5 p-4 bg-slate-50 rounded-xl border border-slate-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+            <div className="flex items-center space-x-2 text-slate-700">
+              <Sparkles className="w-4 h-4 text-sky-700 flex-shrink-0" />
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                Sample Citizen Profiles (Simulated Registries)
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-500">
+              Select any profile to pre-fill official applicant details
+            </span>
           </div>
-          <div className="flex items-center space-x-2">
-            <select
-              value={selectedScenario}
-              onChange={e => setSelectedScenario(e.target.value as any)}
-              disabled={isInitiating || pendingConsent !== null || isOrchestrating || verificationResult !== null}
-              className="bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-60"
-            >
-              <optgroup label="V3/V4 Baseline Scenarios">
-                <option value="data_minimization">
-                  Data Minimization (6 Requested → 4 Allowed, 2 Blocked)
-                </option>
-                <option value="standard">
-                  Standard Verification (All Providers Succeed)
-                </option>
-                <option value="blocked_only">
-                  Only Blocked Fields (POLICY_DENIED)
-                </option>
-              </optgroup>
-              <optgroup label="V6 Provider Failure & Resilience">
-                <option value="education_failure">
-                  Education Provider Failure (Education FAILED → PARTIAL_VERIFIED)
-                </option>
-                <option value="revenue_failure">
-                  Revenue Provider Failure (Revenue FAILED → PARTIAL_VERIFIED)
-                </option>
-                <option value="revenue_timeout">
-                  Provider Timeout (Revenue Gateway 5s Timeout)
-                </option>
-                <option value="residence_malformed">
-                  Malformed Provider Response (Residence Contract Violation)
-                </option>
-                <option value="record_not_found">
-                  Record Not Found (Education Registry Missing Record)
-                </option>
-              </optgroup>
-              <optgroup label="V6 Security & Abuse Protection">
-                <option value="unauthorized_service">
-                  Unauthorized Service (403 AUTHORIZATION_FAILED)
-                </option>
-                <option value="policy_bypass">
-                  Policy Bypass Attempt (Server Ignores Client allowedFields)
-                </option>
-                <option value="duplicate_request">
-                  Duplicate Request / Replay (409 Conflict)
-                </option>
-                <option value="invalid_request">
-                  Invalid Request Body (400 INVALID_REQUEST)
-                </option>
-                <option value="rate_limit">
-                  Rate Limiting Test (Rapid Requests → 429 RATE_LIMITED)
-                </option>
-              </optgroup>
-              <optgroup label="V7 Legacy SOAP/XML Integration">
-                <option value="legacy_soap_normal">
-                  Legacy SOAP/XML Success (SOAP Envelope → Normalized Result)
-                </option>
-                <option value="legacy_soap_timeout">
-                  Legacy SOAP Timeout (Isolated 5s Timeout → FAILED)
-                </option>
-                <option value="legacy_soap_malformed">
-                  Legacy SOAP Malformed XML (Safe XML Parse Error → FAILED)
-                </option>
-                <option value="legacy_soap_invalid_status">
-                  Legacy SOAP Invalid Status (Unknown Code → FAILED)
-                </option>
-                <option value="legacy_soap_not_found">
-                  Legacy SOAP Record Not Found (HTTP 404 / NOT_FOUND)
-                </option>
-                <option value="legacy_soap_server_error">
-                  Legacy SOAP Server Fault (HTTP 500 / FAULT)
-                </option>
-              </optgroup>
-            </select>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+            {SAMPLE_CITIZENS.map(citizen => {
+              const isSelected = formData.applicationId === citizen.id;
+              return (
+                <button
+                  key={citizen.id}
+                  type="button"
+                  disabled={isInitiating || pendingConsent !== null || isOrchestrating || verificationResult !== null}
+                  onClick={() => setFormData(citizen.data)}
+                  className={`text-left p-2.5 rounded-lg border transition-all text-xs ${
+                    isSelected
+                      ? 'bg-sky-50 border-sky-400 text-sky-950 font-medium ring-1 ring-sky-400 shadow-sm'
+                      : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                  } disabled:opacity-60`}
+                >
+                  <div className="font-bold text-[12px] truncate">{citizen.name}</div>
+                  <div className="font-mono text-[10px] text-slate-500 truncate">{citizen.id}</div>
+                  <div className="text-[10px] text-slate-500 mt-1 truncate">{citizen.notes}</div>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -526,6 +473,8 @@ export const ScholarshipPage: React.FC = () => {
                   <option value="Andhra Pradesh">Andhra Pradesh</option>
                   <option value="Karnataka">Karnataka</option>
                   <option value="Maharashtra">Maharashtra</option>
+                  <option value="Uttar Pradesh">Uttar Pradesh</option>
+                  <option value="Gujarat">Gujarat</option>
                   <option value="Delhi">Delhi</option>
                   <option value="Tamil Nadu">Tamil Nadu</option>
                 </select>
@@ -543,7 +492,7 @@ export const ScholarshipPage: React.FC = () => {
             <div className="bg-sky-50/70 border border-sky-200 rounded-xl p-4 flex items-start space-x-3 text-xs text-sky-900">
               <Sparkles className="w-5 h-5 text-sky-700 flex-shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold">Citizen Consent & Policy Governed:</span> In accordance with V3 privacy-by-design standards, EKSetu prompts you for explicit consent and passes your request through the <strong>EKSetu Policy Engine</strong>, ensuring unneeded fields (such as bank balance or medical records) are automatically blocked.
+                <span className="font-bold">Citizen Consent & Policy Governed:</span> In accordance with privacy-by-design standards, EkSetu prompts you for explicit consent and passes your request through the <strong>EkSetu Policy Engine</strong>, ensuring unneeded fields (such as bank balance or full address) are automatically blocked.
               </div>
             </div>
 
@@ -562,7 +511,7 @@ export const ScholarshipPage: React.FC = () => {
                 ) : (
                   <>
                     <ShieldCheck className="w-5 h-5 text-sky-400" />
-                    <span>Verify with EKSetu</span>
+                    <span>Verify with EkSetu</span>
                   </>
                 )}
               </button>
@@ -607,7 +556,7 @@ export const ScholarshipPage: React.FC = () => {
                     Your information was not shared.
                   </p>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    No government department data was retrieved through EKSetu for this request.
+                    No government department data was retrieved through EkSetu for this request.
                   </p>
                 </div>
               </div>
@@ -616,7 +565,7 @@ export const ScholarshipPage: React.FC = () => {
                 <span className="text-xs text-slate-400 font-semibold uppercase">Request Status</span>
                 <StatusBadge status="CONSENT_DENIED" size="lg" />
                 <div className="text-[11px] font-mono text-slate-500 mt-1">
-                  Request ID: <span className="font-bold text-[#0F2642]">{verificationResult?.requestId}</span>
+                  Reference number: <span className="font-bold text-[#0F2642]">{verificationResult?.requestId}</span>
                 </div>
               </div>
             </div>
@@ -679,13 +628,13 @@ export const ScholarshipPage: React.FC = () => {
             )}
 
             {/* Return Action */}
-            <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-xs text-slate-500">
+            <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <span className="text-xs text-slate-500 text-center sm:text-left">
                 You may re-apply or choose manual physical verification where permitted.
               </span>
               <button
                 onClick={handleReset}
-                className="px-6 py-2.5 rounded-xl bg-[#0F2642] hover:bg-[#1A4472] text-white font-bold text-xs flex items-center space-x-2 transition-colors shadow-sm"
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#0F2642] hover:bg-[#1A4472] text-white font-bold text-xs flex items-center justify-center space-x-2 transition-colors shadow-sm"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span>Return to Application</span>
@@ -711,13 +660,13 @@ export const ScholarshipPage: React.FC = () => {
                     </span>
                   </div>
                   <h3 className="text-2xl font-black text-[#0F2642]">
-                    Policy Denied — Data Minimization Block
+                    Data Access Restricted by Policy
                   </h3>
                   <p className="text-sm font-semibold text-slate-700 mt-1">
-                    All requested fields were rejected by EKSetu Policy Engine.
+                    Requested fields were restricted by the EkSetu Policy Engine.
                   </p>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Zero government department data was released because the requested fields are not authorized for purpose 'Scholarship Eligibility'.
+                    No department data was released because the requested attributes exceed the authorized purpose for this service.
                   </p>
                 </div>
               </div>
@@ -726,7 +675,7 @@ export const ScholarshipPage: React.FC = () => {
                 <span className="text-xs text-slate-400 font-semibold uppercase">Request Status</span>
                 <StatusBadge status="POLICY_DENIED" size="lg" />
                 <div className="text-[11px] font-mono text-slate-500 mt-1">
-                  Request ID: <span className="font-bold text-[#0F2642]">{verificationResult?.requestId}</span>
+                  Reference number: <span className="font-bold text-[#0F2642]">{verificationResult?.requestId}</span>
                 </div>
               </div>
             </div>
@@ -738,7 +687,7 @@ export const ScholarshipPage: React.FC = () => {
               </div>
             )}
 
-            {/* V4 Provenance Card */}
+            {/* Provenance Card */}
             <div className="mt-6">
               <VerificationSources
                 provenance={verificationResult?.provenance}
@@ -746,7 +695,7 @@ export const ScholarshipPage: React.FC = () => {
               />
             </div>
 
-            {/* V4 Audit Trail Timeline */}
+            {/* Audit Trail Timeline */}
             <div className="mt-6">
               <VerificationTimeline
                 events={verificationResult?.auditEvents}
@@ -763,13 +712,13 @@ export const ScholarshipPage: React.FC = () => {
             )}
 
             {/* Return Action */}
-            <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-xs text-slate-500">
+            <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <span className="text-xs text-slate-500 text-center sm:text-left">
                 The requesting service exceeded authorized purpose boundaries.
               </span>
               <button
                 onClick={handleReset}
-                className="px-6 py-2.5 rounded-xl bg-[#0F2642] hover:bg-[#1A4472] text-white font-bold text-xs flex items-center space-x-2 transition-colors shadow-sm"
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#0F2642] hover:bg-[#1A4472] text-white font-bold text-xs flex items-center justify-center space-x-2 transition-colors shadow-sm"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span>Return to Application</span>
@@ -788,15 +737,15 @@ export const ScholarshipPage: React.FC = () => {
                 <div className="flex items-center space-x-2 mb-1">
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                     {verificationResult.status === 'PARTIAL_VERIFIED'
-                      ? 'Incomplete Department Outcome'
+                      ? 'Department Verification Incomplete'
                       : 'Orchestrated Verification Outcome'}
                   </span>
                 </div>
                 <h3 className="text-2xl font-black text-[#0F2642]">
                   {verificationResult.status === 'PARTIAL_VERIFIED'
-                    ? 'Partial Verification (Some Departments Incomplete)'
+                    ? 'Partially Verified'
                     : verificationResult.status === 'VERIFICATION_FAILED'
-                    ? 'Department Verification Failed'
+                    ? 'Verification Unsuccessful'
                     : 'Verification Complete'}
                 </h3>
                 <div className="flex items-center space-x-3 mt-2 text-xs text-slate-600">
@@ -810,7 +759,7 @@ export const ScholarshipPage: React.FC = () => {
                 <span className="text-xs text-slate-400 font-semibold uppercase">Overall Status</span>
                 <StatusBadge status={verificationResult.status} size="lg" />
                 <div className="text-[11px] font-mono text-slate-500 mt-1">
-                  Request ID: <span className="font-bold text-[#0F2642]">{verificationResult.requestId}</span>
+                  Reference number: <span className="font-bold text-[#0F2642]">{verificationResult.requestId}</span>
                 </div>
               </div>
             </div>
@@ -854,8 +803,8 @@ export const ScholarshipPage: React.FC = () => {
                         : 'text-rose-700'
                     }`}>
                       {verificationResult.sources?.find(s => s.department === 'Education Department')?.status === 'VERIFIED'
-                        ? '✓ Education verified'
-                        : '✗ Education unverified'}
+                        ? '✓ Academic record verified'
+                        : '✗ Academic record unverified'}
                     </span>
                   </div>
                 </div>
@@ -904,8 +853,8 @@ export const ScholarshipPage: React.FC = () => {
                         : 'text-rose-700'
                     }`}>
                       {verificationResult.sources?.find(s => s.department === 'Residence Department')?.status === 'VERIFIED'
-                        ? '✓ Residence verified'
-                        : '✗ Residence unverified'}
+                        ? '✓ Domicile verified'
+                        : '✗ Domicile unverified'}
                     </span>
                   </div>
                 </div>
@@ -917,23 +866,23 @@ export const ScholarshipPage: React.FC = () => {
                 <div>
                   <div className="flex items-center space-x-1.5 text-xs font-bold text-emerald-800 uppercase tracking-wider mb-2.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>Data Shared (Permitted by Policy)</span>
+                    <span>Permitted information (Policy approved)</span>
                   </div>
                   <div className="space-y-1.5 text-xs">
                     <div className="flex items-center justify-between p-2.5 bg-white border border-emerald-200 rounded-lg">
-                      <span className="text-slate-600 font-medium">Student Name</span>
+                      <span className="text-slate-600 font-medium">Student full name</span>
                       <span className="font-bold text-slate-900">{verificationResult.data?.studentName || formData.name}</span>
                     </div>
                     <div className="flex items-center justify-between p-2.5 bg-white border border-emerald-200 rounded-lg">
-                      <span className="text-slate-600 font-medium">Marks Percentage</span>
+                      <span className="text-slate-600 font-medium">Secondary / higher secondary marks</span>
                       <span className="font-bold text-slate-900">{verificationResult.data?.marksPercentage ?? 82}%</span>
                     </div>
                     <div className="flex items-center justify-between p-2.5 bg-white border border-emerald-200 rounded-lg">
-                      <span className="text-slate-600 font-medium">Annual Income</span>
+                      <span className="text-slate-600 font-medium">Family annual income</span>
                       <span className="font-bold text-slate-900">₹{(verificationResult.data?.annualIncome ?? formData.annualIncome).toLocaleString('en-IN')}</span>
                     </div>
                     <div className="flex items-center justify-between p-2.5 bg-white border border-emerald-200 rounded-lg">
-                      <span className="text-slate-600 font-medium">Domicile State</span>
+                      <span className="text-slate-600 font-medium">State domicile</span>
                       <span className="font-bold text-slate-900">{verificationResult.data?.domicileState || formData.residenceState}</span>
                     </div>
                   </div>
@@ -943,20 +892,20 @@ export const ScholarshipPage: React.FC = () => {
                 <div>
                   <div className="flex items-center space-x-1.5 text-xs font-bold text-rose-800 uppercase tracking-wider mb-2.5">
                     <Lock className="w-4 h-4 text-rose-600" />
-                    <span>Data Blocked (Data Minimization)</span>
+                    <span>Protected information (Data minimized)</span>
                   </div>
                   <div className="space-y-1.5 text-xs">
                     <div className="p-2.5 bg-white border border-rose-200 rounded-lg">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-800">Bank Balance</span>
-                        <span className="text-[10px] bg-rose-100 text-rose-800 font-semibold px-2 py-0.5 rounded">BLOCKED</span>
+                        <span className="font-bold text-slate-800">Bank account balance</span>
+                        <span className="text-[10px] bg-rose-100 text-rose-800 font-semibold px-2 py-0.5 rounded">Protected</span>
                       </div>
                       <span className="text-[11px] text-rose-700 block mt-1 font-medium">Reason: Excessive data</span>
                     </div>
                     <div className="p-2.5 bg-white border border-rose-200 rounded-lg">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-800">Full Address</span>
-                        <span className="text-[10px] bg-rose-100 text-rose-800 font-semibold px-2 py-0.5 rounded">BLOCKED</span>
+                        <span className="font-bold text-slate-800">Full residential address</span>
+                        <span className="text-[10px] bg-rose-100 text-rose-800 font-semibold px-2 py-0.5 rounded">Protected</span>
                       </div>
                       <span className="text-[11px] text-rose-700 block mt-1 font-medium">Reason: Not required for scholarship eligibility</span>
                     </div>
@@ -1014,10 +963,10 @@ export const ScholarshipPage: React.FC = () => {
               <div className="mt-8 p-5 bg-rose-50/50 border border-rose-200 rounded-xl">
                 <div className="flex items-center space-x-2 text-rose-900 font-bold text-xs uppercase tracking-wider mb-2">
                   <Lock className="w-4 h-4 text-rose-600" />
-                  <span>Protected Information (Blocked by EKSetu Policy Engine)</span>
+                  <span>Protected Information (Restricted by EkSetu Policy Engine)</span>
                 </div>
                 <p className="text-xs text-slate-600 mb-4">
-                  The requesting service declared these fields in its request, but EKSetu verified they are not required for Scholarship Eligibility and blocked them from release:
+                  The requesting service declared these fields in its request, but EkSetu verified they are not required for Scholarship Eligibility and restricted them from release:
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1026,9 +975,9 @@ export const ScholarshipPage: React.FC = () => {
                       <XCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
                       <div>
                         <div className="flex items-center space-x-2">
-                          <span className="font-bold text-xs text-slate-900 font-mono">{bf.field}</span>
+                          <span className="font-bold text-xs text-slate-900">{getFieldLabel(bf.field)}</span>
                           <span className="text-[10px] bg-rose-100 text-rose-800 font-semibold px-1.5 py-0.5 rounded">
-                            BLOCKED
+                            Protected
                           </span>
                         </div>
                         <span className="text-[11px] text-slate-500 block mt-0.5">
@@ -1082,7 +1031,7 @@ export const ScholarshipPage: React.FC = () => {
                 <span>Only minimized verified attributes released to Scholarship Application {formData.applicationId}</span>
               </div>
 
-              <div className="flex items-center space-x-3 w-full sm:w-auto">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
                 <button
                   onClick={() => setShowTransparencyModal(true)}
                   className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center justify-center space-x-2 transition-colors shadow-sm"
@@ -1115,7 +1064,7 @@ export const ScholarshipPage: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-[#0F2642]">Audit Trail & Provenance Trace</h3>
-                  <p className="text-xs text-slate-500">Inspect the complete lifecycle and data provenance of any Request ID</p>
+                  <p className="text-xs text-slate-500">Inspect the complete lifecycle and data provenance of any request</p>
                 </div>
               </div>
               <button
@@ -1131,7 +1080,7 @@ export const ScholarshipPage: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                      Demo Role (Server-Validated)
+                      User Role
                     </label>
                     <select
                       value={lookupRole}
@@ -1164,12 +1113,12 @@ export const ScholarshipPage: React.FC = () => {
                   )}
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <div className="relative flex-1">
                     <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                     <input
                       type="text"
-                      placeholder="Enter Request ID (e.g. REQ-20260930-XXXXX)..."
+                      placeholder="Enter reference number (e.g. REQ-20260930-XXXXX)..."
                       value={lookupRequestId}
                       onChange={e => setLookupRequestId(e.target.value)}
                       className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
@@ -1178,7 +1127,7 @@ export const ScholarshipPage: React.FC = () => {
                   <button
                     type="submit"
                     disabled={lookupLoading || !lookupRequestId.trim()}
-                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-sm disabled:opacity-60 flex items-center space-x-1.5 transition-colors"
+                    className="w-full sm:w-auto px-5 py-2.5 sm:py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-sm disabled:opacity-60 flex items-center justify-center space-x-1.5 transition-colors"
                   >
                     {lookupLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin" />

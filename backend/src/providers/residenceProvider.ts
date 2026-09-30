@@ -1,4 +1,5 @@
 import { ApplicantInfo, FailureSimulationConfig, MockDepartmentResponse } from '../models/types';
+import { findSimulatedCitizen } from './simulatedCitizens';
 
 export interface ExtendedResidenceData {
   verified: boolean;
@@ -71,7 +72,27 @@ export class ResidenceProvider {
       };
     }
 
-    const state = applicant.residenceState || 'Telangana';
+    const citizen = findSimulatedCitizen(applicant.applicationId, applicant.name);
+    if (citizen) {
+      if (citizen.residenceStatus === 'MISMATCH') {
+        return {
+          department: this.departmentName,
+          status: 'FAILED',
+          error: 'Residence Department verification failed: Domicile record mismatch.',
+          verifiedAt
+        };
+      }
+      if (applicant.residenceState && applicant.residenceState !== citizen.officialState) {
+        return {
+          department: this.departmentName,
+          status: 'FAILED',
+          error: `Residence Department verification failed: Declared state (${applicant.residenceState}) does not match official domicile registry record (${citizen.officialState}).`,
+          verifiedAt
+        };
+      }
+    }
+
+    const state = applicant.residenceState || (citizen?.officialState ?? 'Telangana');
     const residenceStatus = 'VALID';
 
     return {

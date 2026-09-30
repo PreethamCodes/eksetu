@@ -12,6 +12,7 @@ import {
   Info
 } from 'lucide-react';
 import { PolicyEvaluationResult } from '../types';
+import { getPolicyDecisionDetails, getFieldLabel, humanizeText } from '../utils/displayLabels';
 
 interface PolicyDecisionCardProps {
   policy: PolicyEvaluationResult;
@@ -20,8 +21,7 @@ interface PolicyDecisionCardProps {
 export const PolicyDecisionCard: React.FC<PolicyDecisionCardProps> = ({ policy }) => {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
-  const isPartial = policy.decision === 'PARTIAL_ALLOW';
-  const isAllow = policy.decision === 'ALLOW';
+  const decisionInfo = getPolicyDecisionDetails(policy.decision);
 
   return (
     <div className="bg-white rounded-2xl border border-sky-200 p-6 sm:p-7 shadow-sm">
@@ -34,31 +34,28 @@ export const PolicyDecisionCard: React.FC<PolicyDecisionCardProps> = ({ policy }
           <div>
             <div className="flex items-center space-x-2">
               <span className="text-xs font-bold text-sky-800 uppercase tracking-wider">
-                EKSetu Policy Engine
+                EkSetu Policy Engine
               </span>
               <span className="text-slate-300">•</span>
               <span className="text-[11px] font-mono text-slate-500">
-                {policy.policyId} v{policy.version}
+                {policy.policyId}
               </span>
             </div>
             <h3 className="text-lg font-bold text-[#0F2642] mt-0.5">
               Data Minimization Evaluation
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Purpose: <strong className="text-slate-700">{policy.purpose.replace(/_/g, ' ')}</strong>
+              Purpose: <strong className="text-slate-700">{humanizeText(policy.purpose)}</strong>
             </p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
-          <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
-            isPartial
-              ? 'bg-amber-50 text-amber-800 border-amber-300'
-              : isAllow
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-              : 'bg-rose-50 text-rose-800 border-rose-300'
-          }`}>
-            Policy Decision: {policy.decision.replace(/_/g, ' ')}
+        <div className="flex flex-col sm:items-end">
+          <span className={`px-3 py-1 rounded-full text-xs font-bold border ${decisionInfo.badgeClass}`}>
+            {decisionInfo.label}
+          </span>
+          <span className="text-[11px] text-slate-500 mt-1 max-w-xs text-left sm:text-right">
+            {decisionInfo.description}
           </span>
         </div>
       </div>
@@ -89,7 +86,7 @@ export const PolicyDecisionCard: React.FC<PolicyDecisionCardProps> = ({ policy }
 
           {/* Step 2: Policy Engine */}
           <div className="bg-[#0F2642] text-white p-3 rounded-lg w-full sm:w-1/3 shadow-sm">
-            <span className="text-[10px] font-bold text-sky-300 uppercase block">EKSetu Policy Engine</span>
+            <span className="text-[10px] font-bold text-sky-300 uppercase block">EkSetu Policy Engine</span>
             <div className="flex items-center justify-center space-x-2 text-xs font-bold mt-0.5">
               <span className="text-emerald-300">{policy.totalAllowed} Allowed ✓</span>
               <span>•</span>
@@ -126,7 +123,7 @@ export const PolicyDecisionCard: React.FC<PolicyDecisionCardProps> = ({ policy }
             {policy.allowedFields.map((field, idx) => (
               <li key={idx} className="flex items-center space-x-2 bg-white/80 p-2 rounded border border-emerald-100">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                <span className="font-semibold text-slate-800 font-mono text-[11px]">{field}</span>
+                <span className="font-semibold text-slate-800 text-xs">{getFieldLabel(field)}</span>
               </li>
             ))}
           </ul>
@@ -148,16 +145,16 @@ export const PolicyDecisionCard: React.FC<PolicyDecisionCardProps> = ({ policy }
               {policy.blockedFields.map((bf, idx) => (
                 <li key={idx} className="bg-white/80 p-2 rounded border border-rose-100">
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold text-rose-900 font-mono text-[11px] flex items-center space-x-1.5">
+                    <span className="font-semibold text-rose-900 text-xs flex items-center space-x-1.5">
                       <XCircle className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
-                      <span>{bf.field}</span>
+                      <span>{getFieldLabel(bf.field)}</span>
                     </span>
                     <span className="text-[10px] font-semibold text-slate-400 uppercase">
-                      {bf.classification}
+                      {humanizeText(bf.classification)}
                     </span>
                   </div>
                   <p className="text-[10px] text-slate-500 mt-1 pl-5">
-                    Reason: <strong className="text-rose-700">{bf.reason.replace(/_/g, ' ')}</strong>
+                    Reason: <strong className="text-rose-700">{humanizeText(bf.reason)}</strong>
                   </p>
                 </li>
               ))}
@@ -198,7 +195,7 @@ export const PolicyDecisionCard: React.FC<PolicyDecisionCardProps> = ({ policy }
               <table className="w-full text-left text-[11px]">
                 <thead>
                   <tr className="border-b border-slate-200 text-slate-400">
-                    <th className="pb-1.5 font-semibold">Field Name</th>
+                    <th className="pb-1.5 font-semibold">Attribute</th>
                     <th className="pb-1.5 font-semibold">Classification</th>
                     <th className="pb-1.5 font-semibold">Decision</th>
                     <th className="pb-1.5 font-semibold">Policy Justification</th>
@@ -207,13 +204,15 @@ export const PolicyDecisionCard: React.FC<PolicyDecisionCardProps> = ({ policy }
                 <tbody className="divide-y divide-slate-100">
                   {policy.fieldEvaluations.map((fe, idx) => (
                     <tr key={idx} className="hover:bg-white/60">
-                      <td className="py-2 font-mono font-medium text-slate-800">{fe.field}</td>
-                      <td className="py-2 text-slate-500 uppercase">{fe.classification}</td>
+                      <td className="py-2 font-medium text-slate-800">
+                        {getFieldLabel(fe.field)}
+                      </td>
+                      <td className="py-2 text-slate-500 uppercase">{humanizeText(fe.classification)}</td>
                       <td className="py-2">
                         {fe.decision === 'ALLOW' ? (
-                          <span className="font-bold text-emerald-700">ALLOW</span>
+                          <span className="font-bold text-emerald-700">Permitted</span>
                         ) : (
-                          <span className="font-bold text-rose-700">DENY</span>
+                          <span className="font-bold text-rose-700">Restricted</span>
                         )}
                       </td>
                       <td className="py-2 text-slate-600">{fe.explanation}</td>

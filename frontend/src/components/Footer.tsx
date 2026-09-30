@@ -9,17 +9,17 @@ export const Footer: React.FC = () => {
           <div>
             <div className="flex items-center space-x-2 text-white font-bold text-base mb-1">
               <Shield className="w-4 h-4 text-sky-400" />
-              <span>EKSetu — Government Interoperability</span>
+              <span>EkSetu — Government Interoperability Platform</span>
             </div>
             <p className="text-slate-400 text-xs max-w-xl">
-              "Share Proof, Not Databases." Architectural prototype demonstrating secure, federated attribute verification across disparate departmental registries.
+              "Share Proof, Not Databases." Architectural platform demonstrating secure, federated attribute verification across departmental registries.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-4 text-slate-300 text-xs">
             <div className="flex items-center space-x-1.5 bg-slate-800/80 px-3 py-1.5 rounded border border-slate-700">
               <Layers className="w-3.5 h-3.5 text-sky-400" />
-              <span>3 Mock Data Providers</span>
+              <span>Federated Data Providers</span>
             </div>
             <div className="flex items-center space-x-1.5 bg-slate-800/80 px-3 py-1.5 rounded border border-slate-700">
               <Lock className="w-3.5 h-3.5 text-emerald-400" />
@@ -28,12 +28,12 @@ export const Footer: React.FC = () => {
           </div>
         </div>
 
-        <div className="pt-6 flex flex-col sm:flex-row justify-between items-center text-[11px] text-slate-500 gap-2">
+        <div className="pt-6 flex flex-col sm:flex-row justify-between items-center text-[11px] text-slate-500 gap-2 text-center sm:text-left">
           <p>
-            Smart India Hackathon Prototype. Demonstration / Sandbox Services only. No actual citizen PII is collected or persisted.
+            Demonstration Environment. Verified across simulated departmental registries.
           </p>
-          <p>
-            EKSetu Core Interoperability Specification v1.0
+          <p className="mt-1 sm:mt-0 font-medium">
+            EkSetu National Interoperability Framework
           </p>
         </div>
       </div>
