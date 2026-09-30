@@ -17,19 +17,37 @@ app.use(securityHeaders);
 // Middleware
 app.use(cors({
   origin: '*', // Allow frontend client access
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
   allowedHeaders: [
     'Content-Type',
     'Authorization',
+    'x-admin-key',
+    'X-Admin-Key',
+    'x-api-key',
+    'X-Api-Key',
+    'x-caller-id',
+    'X-Caller-Id',
     'x-applicant-id',
-    'x-citizen-id',
-    'x-user-role',
     'X-Applicant-Id',
+    'x-citizen-id',
     'X-Citizen-Id',
+    'x-user-role',
     'X-User-Role',
-    'x-bypass-rate-limit'
+    'role',
+    'Role',
+    'x-service-id',
+    'X-Service-Id',
+    'x-service-key',
+    'X-Service-Key',
+    'x-bypass-rate-limit',
+    'X-Bypass-Rate-Limit',
+    'Accept',
+    'Origin',
+    'X-Requested-With'
   ]
 }));
+app.options('*', cors());
+
 // Strict payload limit: 100kb to mitigate oversized payload attacks
 app.use(express.json({ limit: '100kb' }));
 
