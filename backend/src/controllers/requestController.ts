@@ -4,6 +4,7 @@ import { DatabaseService } from '../services/databaseService';
 import { AuditService } from '../services/auditService';
 import { validateTraceAuthorization } from '../middleware/traceAuth';
 import { VerificationRequestInput } from '../models/types';
+import { ProviderRegistry } from '../providers/providerRegistry';
 
 export class RequestController {
   /**
@@ -175,6 +176,25 @@ export class RequestController {
   }
 
   /**
+   * Provider Registry Lookup
+   * GET /api/v1/providers
+   */
+  static async getProviders(req: Request, res: Response) {
+    try {
+      const providers = ProviderRegistry.getAllProviders();
+      res.status(200).json({
+        total: providers.length,
+        providers
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        error: 'PROVIDER_REGISTRY_ERROR',
+        message: error.message || 'Failed to list providers'
+      });
+    }
+  }
+
+  /**
    * Gateway Health Check Endpoint
    * GET /api/health
    */
@@ -182,7 +202,7 @@ export class RequestController {
     res.status(200).json({
       status: 'ok',
       service: 'EKSetu API',
-      version: '5.0.0',
+      version: '7.0.0',
       capabilities: [
         'INTEROPERABILITY',
         'CITIZEN_CONSENT',
@@ -191,7 +211,9 @@ export class RequestController {
         'DATA_MINIMIZATION',
         'PROVENANCE',
         'AUDIT_TRAIL',
-        'CITIZEN_TRANSPARENCY'
+        'CITIZEN_TRANSPARENCY',
+        'FAILURE_HANDLING',
+        'LEGACY_SOAP_ADAPTER'
       ]
     });
   }

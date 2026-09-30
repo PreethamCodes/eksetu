@@ -58,7 +58,13 @@ type DemoScenario =
   | 'policy_bypass'
   | 'duplicate_request'
   | 'invalid_request'
-  | 'rate_limit';
+  | 'rate_limit'
+  | 'legacy_soap_normal'
+  | 'legacy_soap_timeout'
+  | 'legacy_soap_malformed'
+  | 'legacy_soap_invalid_status'
+  | 'legacy_soap_not_found'
+  | 'legacy_soap_server_error';
 
 export const ScholarshipPage: React.FC = () => {
   const [formData, setFormData] = useState<ApplicantFormData>(DEFAULT_FORM);
@@ -178,6 +184,23 @@ export const ScholarshipPage: React.FC = () => {
             requestedData: ['studentName']
           });
         }
+      } else if (selectedScenario === 'legacy_soap_normal') {
+        applicantData.preferredProvider = 'LEGACY_EDUCATION';
+      } else if (selectedScenario === 'legacy_soap_timeout') {
+        applicantData.preferredProvider = 'LEGACY_EDUCATION';
+        simulateFailure = { department: 'education', providerId: 'LEGACY_EDUCATION', failureType: 'TIMEOUT', reason: 'Legacy Education SOAP service timed out (5000ms)' };
+      } else if (selectedScenario === 'legacy_soap_malformed') {
+        applicantData.preferredProvider = 'LEGACY_EDUCATION';
+        simulateFailure = { department: 'education', providerId: 'LEGACY_EDUCATION', failureType: 'MALFORMED_XML', reason: 'Legacy SOAP service returned unparseable XML syntax' };
+      } else if (selectedScenario === 'legacy_soap_invalid_status') {
+        applicantData.preferredProvider = 'LEGACY_EDUCATION';
+        simulateFailure = { department: 'education', providerId: 'LEGACY_EDUCATION', failureType: 'INVALID_STATUS', reason: 'Legacy SOAP response contains invalid status code' };
+      } else if (selectedScenario === 'legacy_soap_not_found') {
+        applicantData.preferredProvider = 'LEGACY_EDUCATION';
+        simulateFailure = { department: 'education', providerId: 'LEGACY_EDUCATION', failureType: 'RECORD_NOT_FOUND', reason: 'Student record not found in Legacy Education registry' };
+      } else if (selectedScenario === 'legacy_soap_server_error') {
+        applicantData.preferredProvider = 'LEGACY_EDUCATION';
+        simulateFailure = { department: 'education', providerId: 'LEGACY_EDUCATION', failureType: 'SERVER_ERROR', reason: 'Legacy SOAP system fault 500' };
       }
 
       const payload = {
@@ -185,6 +208,7 @@ export const ScholarshipPage: React.FC = () => {
         applicant: applicantData,
         requestedData,
         purpose: 'Scholarship Eligibility',
+        providerSelection: applicantData.preferredProvider,
         simulateFailure
       };
 
@@ -376,6 +400,26 @@ export const ScholarshipPage: React.FC = () => {
                 </option>
                 <option value="rate_limit">
                   Rate Limiting Test (Rapid Requests → 429 RATE_LIMITED)
+                </option>
+              </optgroup>
+              <optgroup label="V7 Legacy SOAP/XML Integration">
+                <option value="legacy_soap_normal">
+                  Legacy SOAP/XML Success (SOAP Envelope → Normalized Result)
+                </option>
+                <option value="legacy_soap_timeout">
+                  Legacy SOAP Timeout (Isolated 5s Timeout → FAILED)
+                </option>
+                <option value="legacy_soap_malformed">
+                  Legacy SOAP Malformed XML (Safe XML Parse Error → FAILED)
+                </option>
+                <option value="legacy_soap_invalid_status">
+                  Legacy SOAP Invalid Status (Unknown Code → FAILED)
+                </option>
+                <option value="legacy_soap_not_found">
+                  Legacy SOAP Record Not Found (HTTP 404 / NOT_FOUND)
+                </option>
+                <option value="legacy_soap_server_error">
+                  Legacy SOAP Server Fault (HTTP 500 / FAULT)
                 </option>
               </optgroup>
             </select>

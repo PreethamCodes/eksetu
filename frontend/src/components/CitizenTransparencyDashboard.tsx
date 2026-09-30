@@ -619,6 +619,14 @@ export const CitizenTransparencyDashboard: React.FC<CitizenTransparencyDashboard
                             </span>
                           </div>
 
+                          {src.connectionType && (
+                            <div className="mb-1.5">
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 inline-block">
+                                {src.connectionType}
+                              </span>
+                            </div>
+                          )}
+
                           <div className="text-[11px] text-slate-600 font-mono">
                             Field: {src.field}
                           </div>

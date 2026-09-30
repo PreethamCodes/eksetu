@@ -18,15 +18,21 @@ export type VerificationStatus =
 export type ConsentDecision = 'PENDING' | 'GRANTED' | 'DENIED';
 export type ConsentType = 'ONE_TIME';
 
+export type ProviderProtocol = 'REST' | 'SOAP_XML';
+
 export type FailureType =
   | 'NORMAL'
   | 'FAILURE'
   | 'TIMEOUT'
   | 'MALFORMED_RESPONSE'
-  | 'RECORD_NOT_FOUND';
+  | 'RECORD_NOT_FOUND'
+  | 'MALFORMED_XML'
+  | 'INVALID_STATUS'
+  | 'SERVER_ERROR';
 
 export interface FailureSimulationConfig {
   department?: 'education' | 'revenue' | 'residence';
+  providerId?: string;
   failureType?: FailureType;
   reason?: string;
 }
@@ -39,6 +45,9 @@ export interface ApplicantInfo {
   marksPercentage?: number;
   annualIncome?: number;
   residenceState?: string;
+  preferredProvider?: {
+    education?: 'EDUCATION' | 'LEGACY_EDUCATION';
+  };
 }
 
 export interface VerificationRequestInput {
@@ -46,6 +55,9 @@ export interface VerificationRequestInput {
   applicant: ApplicantInfo;
   requestedData: string[];
   purpose?: string;
+  providerSelection?: {
+    education?: 'EDUCATION' | 'LEGACY_EDUCATION';
+  };
   simulateFailure?: FailureSimulationConfig;
 }
 
@@ -114,6 +126,8 @@ export interface ResidenceDepartmentData {
 
 export interface DepartmentSourceSummary {
   department: string;
+  providerId?: string;
+  protocol?: ProviderProtocol;
   status: 'VERIFIED' | 'FAILED' | 'NOT_REQUESTED';
   verifiedAt?: string;
   error?: string;
@@ -149,7 +163,16 @@ export type AuditEventType =
   | 'VERIFICATION_COMPLETED'
   | 'VERIFICATION_PARTIAL'
   | 'VERIFICATION_FAILED'
-  | 'RESULT_DELIVERED';
+  | 'RESULT_DELIVERED'
+  // V7 Legacy Integration Audit Events
+  | 'LEGACY_PROVIDER_SELECTED'
+  | 'LEGACY_REQUEST_BUILT'
+  | 'LEGACY_REQUEST_SENT'
+  | 'LEGACY_RESPONSE_RECEIVED'
+  | 'LEGACY_XML_PARSED'
+  | 'LEGACY_XML_VALIDATION_FAILED'
+  | 'LEGACY_PROVIDER_TIMEOUT'
+  | 'LEGACY_PROVIDER_FAILED';
 
 export interface AuditEvent {
   id: string;
@@ -167,8 +190,10 @@ export interface AuditEvent {
 
 export interface ProvenanceRecord {
   field: string;
-  provider: 'EDUCATION' | 'REVENUE' | 'RESIDENCE';
+  provider: 'EDUCATION' | 'REVENUE' | 'RESIDENCE' | 'LEGACY_EDUCATION' | string;
+  providerId?: string;
   providerName: string;
+  protocol?: ProviderProtocol;
   status: 'VERIFIED' | 'FAILED';
   verifiedAt: string;
 }

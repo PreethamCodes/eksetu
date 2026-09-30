@@ -12,6 +12,7 @@ import { EducationProvider } from '../providers/educationProvider';
 import { RevenueProvider } from '../providers/revenueProvider';
 import { ResidenceProvider } from '../providers/residenceProvider';
 import { ProviderValidator } from '../providers/providerValidation';
+import { ProviderRegistry } from '../providers/providerRegistry';
 import { DatabaseService } from './databaseService';
 import { ConsentService } from './consentService';
 import { AuthorizationService } from './authorizationService';
@@ -466,26 +467,59 @@ export class InteroperabilityService {
 
     // 1. Education Department Provider (Only called if allowed)
     if (isEduAllowed) {
+      // V7: Authoritative provider selection via ProviderRegistry
+      const eduProvider = ProviderRegistry.selectEducationProvider(requestRecord);
+      const isLegacy = eduProvider.providerId === 'LEGACY_EDUCATION';
+
+      if (isLegacy) {
+        await AuditService.recordEvent({
+          requestId,
+          eventType: 'LEGACY_PROVIDER_SELECTED',
+          service: requestRecord.service,
+          provider: eduProvider.providerId,
+          status: 'SUCCESS',
+          metadata: {
+            protocol: eduProvider.protocol,
+            providerName: eduProvider.providerName
+          }
+        });
+      }
+
       await AuditService.recordEvent({
         requestId,
         eventType: 'PROVIDER_REQUESTED',
         service: requestRecord.service,
-        provider: 'EDUCATION',
+        provider: eduProvider.providerId,
         status: 'PENDING',
-        metadata: { department: 'Education Department' }
+        metadata: {
+          department: eduProvider.department,
+          protocol: eduProvider.protocol,
+          providerName: eduProvider.providerName
+        }
       });
 
-      const simConfig = (failDept === 'education') ? (simulateFailure || true) : undefined;
+      const isEduSimTarget = failDept === 'education' || simulateFailure?.providerId === eduProvider.providerId;
+      const simConfig = isEduSimTarget ? (simulateFailure || true) : undefined;
+
       const providerCall = await InteroperabilityService.callProviderWithTimeout(
-        'Education Department',
-        () => EducationProvider.verify(applicant, simConfig)
+        eduProvider.providerName,
+        () => eduProvider.verify({
+          requestId,
+          service: requestRecord.service,
+          applicant,
+          requestedFields: policyResult.allowedFields, // Pre-filtered by Policy Engine (Request Minimization)!
+          purpose,
+          simulateFailure: typeof simConfig === 'object' ? simConfig : (simConfig ? { failureType: 'FAILURE' } : undefined)
+        })
       );
 
       const verifiedAt = new Date().toISOString();
 
       if (providerCall.timedOut) {
         sources.push({
-          department: EducationProvider.departmentName,
+          department: eduProvider.department,
+          providerId: eduProvider.providerId,
+          protocol: eduProvider.protocol,
           status: 'FAILED',
           verifiedAt,
           error: `Provider timed out after ${providerCall.durationMs}ms`
@@ -499,14 +533,30 @@ export class InteroperabilityService {
           verified: false
         };
 
+        if (isLegacy) {
+          await AuditService.recordEvent({
+            requestId,
+            eventType: 'LEGACY_PROVIDER_TIMEOUT',
+            service: requestRecord.service,
+            provider: eduProvider.providerId,
+            status: 'FAILED',
+            metadata: {
+              protocol: eduProvider.protocol,
+              durationMs: providerCall.durationMs,
+              timeoutMs: Number(process.env.PROVIDER_TIMEOUT_MS || 5000)
+            }
+          });
+        }
+
         await AuditService.recordEvent({
           requestId,
           eventType: 'PROVIDER_TIMEOUT',
           service: requestRecord.service,
-          provider: 'EDUCATION',
+          provider: eduProvider.providerId,
           status: 'FAILED',
           metadata: {
-            department: 'Education Department',
+            department: eduProvider.department,
+            protocol: eduProvider.protocol,
             durationMs: providerCall.durationMs,
             timeoutMs: Number(process.env.PROVIDER_TIMEOUT_MS || 5000),
             error: providerCall.error
@@ -514,14 +564,16 @@ export class InteroperabilityService {
         });
 
         trace.push({
-          step: 'EDUCATION_DEPARTMENT_TIMEOUT',
-          message: `Education Department request timed out after ${providerCall.durationMs}ms`,
+          step: isLegacy ? 'LEGACY_EDUCATION_TIMEOUT' : 'EDUCATION_DEPARTMENT_TIMEOUT',
+          message: `${eduProvider.providerName} request timed out after ${providerCall.durationMs}ms`,
           status: 'FAILED',
           timestamp: verifiedAt
         });
       } else {
         const eduRes = providerCall.data || {
-          department: EducationProvider.departmentName,
+          department: eduProvider.department,
+          providerId: eduProvider.providerId,
+          protocol: eduProvider.protocol,
           status: 'FAILED' as const,
           error: providerCall.error || 'Provider communication failure',
           verifiedAt
@@ -531,7 +583,9 @@ export class InteroperabilityService {
           const contractCheck = ProviderValidator.validateEducation(eduRes.data);
           if (!contractCheck.valid) {
             sources.push({
-              department: eduRes.department,
+              department: eduProvider.department,
+              providerId: eduProvider.providerId,
+              protocol: eduProvider.protocol,
               status: 'FAILED',
               verifiedAt: eduRes.verifiedAt,
               error: contractCheck.error
@@ -549,26 +603,29 @@ export class InteroperabilityService {
               requestId,
               eventType: 'PROVIDER_INVALID_RESPONSE',
               service: requestRecord.service,
-              provider: 'EDUCATION',
+              provider: eduProvider.providerId,
               status: 'FAILED',
               metadata: {
-                department: 'Education Department',
+                department: eduProvider.department,
+                protocol: eduProvider.protocol,
                 error: contractCheck.error
               }
             });
 
             trace.push({
-              step: 'EDUCATION_DEPARTMENT_MALFORMED',
-              message: `Education Department returned malformed response: ${contractCheck.error}`,
+              step: isLegacy ? 'LEGACY_EDUCATION_MALFORMED' : 'EDUCATION_DEPARTMENT_MALFORMED',
+              message: `${eduProvider.providerName} returned malformed response: ${contractCheck.error}`,
               status: 'FAILED',
               timestamp: eduRes.verifiedAt
             });
           } else {
-            // Passed contract validation
+            // Passed contract validation -> Response Minimization
             verifiedData.education = PolicyService.minimizeEducationData(eduRes.data, policyResult.allowedFields);
 
             sources.push({
-              department: eduRes.department,
+              department: eduProvider.department,
+              providerId: eduProvider.providerId,
+              protocol: eduProvider.protocol,
               status: 'VERIFIED',
               verifiedAt: eduRes.verifiedAt
             });
@@ -577,21 +634,26 @@ export class InteroperabilityService {
               requestId,
               eventType: 'PROVIDER_VERIFIED',
               service: requestRecord.service,
-              provider: 'EDUCATION',
+              provider: eduProvider.providerId,
               status: 'VERIFIED',
-              metadata: { department: 'Education Department' }
+              metadata: {
+                department: eduProvider.department,
+                protocol: eduProvider.protocol
+              }
             });
 
             trace.push({
-              step: 'EDUCATION_DEPARTMENT_VERIFIED',
-              message: 'Education Department API contacted — Academic qualification record verified by department',
+              step: isLegacy ? 'LEGACY_EDUCATION_VERIFIED' : 'EDUCATION_DEPARTMENT_VERIFIED',
+              message: `${eduProvider.providerName} API contacted via ${eduProvider.protocol} — Academic qualification record verified by department`,
               status: 'SUCCESS',
               timestamp: eduRes.verifiedAt
             });
           }
         } else {
           sources.push({
-            department: eduRes.department,
+            department: eduProvider.department,
+            providerId: eduProvider.providerId,
+            protocol: eduProvider.protocol,
             status: eduRes.status || 'FAILED',
             verifiedAt: eduRes.verifiedAt,
             error: eduRes.error
@@ -609,14 +671,18 @@ export class InteroperabilityService {
             requestId,
             eventType: 'PROVIDER_VERIFICATION_FAILED',
             service: requestRecord.service,
-            provider: 'EDUCATION',
+            provider: eduProvider.providerId,
             status: 'FAILED',
-            metadata: { department: 'Education Department', error: eduRes.error || 'Record unverified' }
+            metadata: {
+              department: eduProvider.department,
+              protocol: eduProvider.protocol,
+              error: eduRes.error || 'Record unverified'
+            }
           });
 
           trace.push({
-            step: 'EDUCATION_DEPARTMENT_FAILED',
-            message: `Education Department API returned verification failure: ${eduRes.error || 'Record unverified'}`,
+            step: isLegacy ? 'LEGACY_EDUCATION_FAILED' : 'EDUCATION_DEPARTMENT_FAILED',
+            message: `${eduProvider.providerName} API returned verification failure: ${eduRes.error || 'Record unverified'}`,
             status: 'FAILED',
             timestamp: eduRes.verifiedAt
           });
@@ -632,7 +698,7 @@ export class InteroperabilityService {
         service: requestRecord.service,
         provider: 'REVENUE',
         status: 'PENDING',
-        metadata: { department: 'Revenue Department' }
+        metadata: { department: 'Revenue Department', protocol: 'REST' }
       });
 
       const simConfig = (failDept === 'revenue') ? (simulateFailure || true) : undefined;
@@ -646,6 +712,8 @@ export class InteroperabilityService {
       if (providerCall.timedOut) {
         sources.push({
           department: RevenueProvider.departmentName,
+          providerId: 'REVENUE',
+          protocol: 'REST',
           status: 'FAILED',
           verifiedAt,
           error: `Provider timed out after ${providerCall.durationMs}ms`
@@ -665,6 +733,7 @@ export class InteroperabilityService {
           status: 'FAILED',
           metadata: {
             department: 'Revenue Department',
+            protocol: 'REST',
             durationMs: providerCall.durationMs,
             timeoutMs: Number(process.env.PROVIDER_TIMEOUT_MS || 5000),
             error: providerCall.error
@@ -690,6 +759,8 @@ export class InteroperabilityService {
           if (!contractCheck.valid) {
             sources.push({
               department: revRes.department,
+              providerId: 'REVENUE',
+              protocol: 'REST',
               status: 'FAILED',
               verifiedAt: revRes.verifiedAt,
               error: contractCheck.error
@@ -709,6 +780,7 @@ export class InteroperabilityService {
               status: 'FAILED',
               metadata: {
                 department: 'Revenue Department',
+                protocol: 'REST',
                 error: contractCheck.error
               }
             });
@@ -725,6 +797,8 @@ export class InteroperabilityService {
 
             sources.push({
               department: revRes.department,
+              providerId: 'REVENUE',
+              protocol: 'REST',
               status: 'VERIFIED',
               verifiedAt: revRes.verifiedAt
             });
@@ -735,7 +809,7 @@ export class InteroperabilityService {
               service: requestRecord.service,
               provider: 'REVENUE',
               status: 'VERIFIED',
-              metadata: { department: 'Revenue Department' }
+              metadata: { department: 'Revenue Department', protocol: 'REST' }
             });
 
             trace.push({
@@ -748,6 +822,8 @@ export class InteroperabilityService {
         } else {
           sources.push({
             department: revRes.department,
+            providerId: 'REVENUE',
+            protocol: 'REST',
             status: revRes.status || 'FAILED',
             verifiedAt: revRes.verifiedAt,
             error: revRes.error
@@ -765,7 +841,7 @@ export class InteroperabilityService {
             service: requestRecord.service,
             provider: 'REVENUE',
             status: 'FAILED',
-            metadata: { department: 'Revenue Department', error: revRes.error || 'Record unverified' }
+            metadata: { department: 'Revenue Department', protocol: 'REST', error: revRes.error || 'Record unverified' }
           });
 
           trace.push({
@@ -786,7 +862,7 @@ export class InteroperabilityService {
         service: requestRecord.service,
         provider: 'RESIDENCE',
         status: 'PENDING',
-        metadata: { department: 'Residence Department' }
+        metadata: { department: 'Residence Department', protocol: 'REST' }
       });
 
       const simConfig = (failDept === 'residence') ? (simulateFailure || true) : undefined;
@@ -800,6 +876,8 @@ export class InteroperabilityService {
       if (providerCall.timedOut) {
         sources.push({
           department: ResidenceProvider.departmentName,
+          providerId: 'RESIDENCE',
+          protocol: 'REST',
           status: 'FAILED',
           verifiedAt,
           error: `Provider timed out after ${providerCall.durationMs}ms`
@@ -820,6 +898,7 @@ export class InteroperabilityService {
           status: 'FAILED',
           metadata: {
             department: 'Residence Department',
+            protocol: 'REST',
             durationMs: providerCall.durationMs,
             timeoutMs: Number(process.env.PROVIDER_TIMEOUT_MS || 5000),
             error: providerCall.error
@@ -845,6 +924,8 @@ export class InteroperabilityService {
           if (!contractCheck.valid) {
             sources.push({
               department: resRes.department,
+              providerId: 'RESIDENCE',
+              protocol: 'REST',
               status: 'FAILED',
               verifiedAt: resRes.verifiedAt,
               error: contractCheck.error
@@ -865,6 +946,7 @@ export class InteroperabilityService {
               status: 'FAILED',
               metadata: {
                 department: 'Residence Department',
+                protocol: 'REST',
                 error: contractCheck.error
               }
             });
@@ -881,6 +963,8 @@ export class InteroperabilityService {
 
             sources.push({
               department: resRes.department,
+              providerId: 'RESIDENCE',
+              protocol: 'REST',
               status: 'VERIFIED',
               verifiedAt: resRes.verifiedAt
             });
@@ -891,7 +975,7 @@ export class InteroperabilityService {
               service: requestRecord.service,
               provider: 'RESIDENCE',
               status: 'VERIFIED',
-              metadata: { department: 'Residence Department' }
+              metadata: { department: 'Residence Department', protocol: 'REST' }
             });
 
             trace.push({
@@ -904,6 +988,8 @@ export class InteroperabilityService {
         } else {
           sources.push({
             department: resRes.department,
+            providerId: 'RESIDENCE',
+            protocol: 'REST',
             status: resRes.status || 'FAILED',
             verifiedAt: resRes.verifiedAt,
             error: resRes.error
@@ -922,7 +1008,7 @@ export class InteroperabilityService {
             service: requestRecord.service,
             provider: 'RESIDENCE',
             status: 'FAILED',
-            metadata: { department: 'Residence Department', error: resRes.error || 'Record unverified' }
+            metadata: { department: 'Residence Department', protocol: 'REST', error: resRes.error || 'Record unverified' }
           });
 
           trace.push({

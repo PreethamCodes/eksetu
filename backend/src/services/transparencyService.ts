@@ -33,6 +33,8 @@ export interface CitizenTransparencyView {
   sources: Array<{
     provider: 'EDUCATION' | 'REVENUE' | 'RESIDENCE';
     providerName: string;
+    connectionType?: string;
+    protocol?: string;
     field: string;
     status: 'VERIFIED' | 'FAILED' | 'NOT_REQUESTED';
     statusExplanation: string;
@@ -207,6 +209,62 @@ export class TransparencyService {
             description: 'Only minimized verified attributes delivered to Scholarship Portal'
           });
           break;
+        case 'LEGACY_PROVIDER_SELECTED':
+          timeline.push({
+            time,
+            title: 'Legacy system selected',
+            description: 'Connected to legacy government education system using SOAP/XML protocol'
+          });
+          break;
+        case 'LEGACY_REQUEST_BUILT':
+          timeline.push({
+            time,
+            title: 'Secure legacy request prepared',
+            description: 'Constructed data-minimized legacy request with only permitted fields'
+          });
+          break;
+        case 'LEGACY_REQUEST_SENT':
+          timeline.push({
+            time,
+            title: 'Legacy system contacted',
+            description: 'Encrypted request transmitted to legacy government backend'
+          });
+          break;
+        case 'LEGACY_RESPONSE_RECEIVED':
+          timeline.push({
+            time,
+            title: 'Legacy system responded',
+            description: 'Received response from legacy government system'
+          });
+          break;
+        case 'LEGACY_XML_PARSED':
+          timeline.push({
+            time,
+            title: 'Legacy data standardized',
+            description: 'Safely parsed and validated legacy data format'
+          });
+          break;
+        case 'LEGACY_XML_VALIDATION_FAILED':
+          timeline.push({
+            time,
+            title: 'Legacy data validation failed',
+            description: 'Legacy system returned unexpected response structure'
+          });
+          break;
+        case 'LEGACY_PROVIDER_TIMEOUT':
+          timeline.push({
+            time,
+            title: 'Legacy system timed out',
+            description: 'Legacy provider did not respond within timeout window'
+          });
+          break;
+        case 'LEGACY_PROVIDER_FAILED':
+          timeline.push({
+            time,
+            title: 'Legacy system error',
+            description: 'Legacy provider encountered an error'
+          });
+          break;
       }
     }
 
@@ -295,12 +353,17 @@ export class TransparencyService {
         const eduSource = sourcesList.find((s: any) => s.department === 'Education Department');
         const eduDb = deptResults.find((d: any) => d.provider === 'Education Department');
         const status = eduSource?.status || eduDb?.status || 'VERIFIED';
+        const isLegacyEdu = eduSource?.providerId === 'LEGACY_EDUCATION' || eduSource?.protocol === 'SOAP_XML';
         sources.push({
           provider: 'EDUCATION',
-          providerName: 'Education Department',
+          providerName: isLegacyEdu ? 'Legacy Education Department System' : 'Education Department',
+          connectionType: isLegacyEdu ? 'Legacy government system (SOAP/XML)' : 'Modern government system (REST API)',
+          protocol: isLegacyEdu ? 'SOAP_XML' : 'REST',
           field: 'qualification',
           status: status as any,
-          statusExplanation: status === 'VERIFIED' ? 'Academic qualification verified by department' : 'Department provider unavailable',
+          statusExplanation: status === 'VERIFIED'
+            ? (isLegacyEdu ? 'Academic qualification verified via legacy government system' : 'Academic qualification verified by department')
+            : 'Department provider unavailable',
           verifiedAt: eduSource?.verifiedAt || eduDb?.verified_at
         });
       }
@@ -313,6 +376,8 @@ export class TransparencyService {
         sources.push({
           provider: 'REVENUE',
           providerName: 'Revenue Department',
+          connectionType: 'Modern government system (REST API)',
+          protocol: 'REST',
           field: 'annualIncome',
           status: status as any,
           statusExplanation: status === 'VERIFIED' ? 'Annual income verified by department' : 'Department provider unavailable',
@@ -328,6 +393,8 @@ export class TransparencyService {
         sources.push({
           provider: 'RESIDENCE',
           providerName: 'Residence Department',
+          connectionType: 'Modern government system (REST API)',
+          protocol: 'REST',
           field: 'domicileState',
           status: status as any,
           statusExplanation: status === 'VERIFIED' ? 'State domicile verified by department' : 'Department provider unavailable',

@@ -37,3 +37,6 @@ apiRouter.get('/v1/requests/:requestId/provenance', RequestController.getProvena
 apiRouter.get('/v1/citizen/requests', CitizenController.getCitizenRequests);
 apiRouter.get('/v1/citizen/requests/:requestId', CitizenController.getCitizenRequestDetail);
 
+// V7 Provider Registry endpoint
+apiRouter.get('/v1/providers', RequestController.getProviders);
+

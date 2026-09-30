@@ -73,6 +73,7 @@ export interface ApplicantFormData {
   marksPercentage?: number;
   annualIncome: number;
   residenceState: string;
+  preferredProvider?: string;
 }
 
 export interface ConsentRecord {
@@ -161,6 +162,8 @@ export interface ProvenanceRecord {
   field: string;
   provider: 'EDUCATION' | 'REVENUE' | 'RESIDENCE';
   providerName: string;
+  protocol?: 'REST' | 'SOAP_XML';
+  providerId?: string;
   status: 'VERIFIED' | 'FAILED';
   verifiedAt: string;
 }
@@ -250,6 +253,8 @@ export interface CitizenTransparencyView {
   sources: Array<{
     provider: 'EDUCATION' | 'REVENUE' | 'RESIDENCE';
     providerName: string;
+    connectionType?: string;
+    protocol?: string;
     field: string;
     status: 'VERIFIED' | 'FAILED' | 'NOT_REQUESTED';
     statusExplanation: string;
@@ -281,9 +286,11 @@ export interface VerificationRequestPayload {
   applicant: ApplicantFormData;
   requestedData: string[];
   purpose?: string;
+  providerSelection?: 'EDUCATION' | 'LEGACY_EDUCATION' | string;
   simulateFailure?: {
     department?: 'education' | 'revenue' | 'residence';
-    failureType?: 'NORMAL' | 'FAILURE' | 'TIMEOUT' | 'MALFORMED_RESPONSE' | 'RECORD_NOT_FOUND';
+    providerId?: 'EDUCATION' | 'LEGACY_EDUCATION' | 'REVENUE' | 'RESIDENCE';
+    failureType?: 'NORMAL' | 'FAILURE' | 'TIMEOUT' | 'MALFORMED_RESPONSE' | 'RECORD_NOT_FOUND' | 'MALFORMED_XML' | 'INVALID_STATUS' | 'SERVER_ERROR';
     reason?: string;
   };
 }

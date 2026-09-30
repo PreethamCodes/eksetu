@@ -59,6 +59,7 @@ export const VerificationSources: React.FC<VerificationSourcesProps> = ({
             <tr>
               <th className="py-2.5 px-4">Released Field</th>
               <th className="py-2.5 px-4">Authoritative Provider</th>
+              <th className="py-2.5 px-4">Protocol</th>
               <th className="py-2.5 px-4">Department</th>
               <th className="py-2.5 px-4">Verification Status</th>
               <th className="py-2.5 px-4">Timestamp</th>
@@ -73,6 +74,11 @@ export const VerificationSources: React.FC<VerificationSourcesProps> = ({
                 <td className="py-3 px-4">
                   <span className={`inline-flex items-center px-2 py-0.5 rounded font-mono font-semibold text-[11px] border ${getProviderColor(item.provider)}`}>
                     {item.provider}
+                  </span>
+                </td>
+                <td className="py-3 px-4">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded font-mono font-bold text-[10px] border ${item.protocol === 'SOAP_XML' ? 'bg-amber-50 text-amber-800 border-amber-300' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                    {item.protocol === 'SOAP_XML' ? 'SOAP / XML' : 'REST'}
                   </span>
                 </td>
                 <td className="py-3 px-4 font-medium text-slate-800">

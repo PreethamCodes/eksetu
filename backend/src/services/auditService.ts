@@ -126,11 +126,17 @@ export class AuditService {
         const source = sourceMap.get(mapping.deptName);
         const status = source && source.status === 'VERIFIED' ? 'VERIFIED' : 'FAILED';
         const verifiedAt = source?.verifiedAt || now;
+        const isLegacy = source?.providerId === 'LEGACY_EDUCATION';
+        const providerId = source?.providerId || mapping.provider;
+        const providerName = isLegacy ? 'Legacy Education Department System' : mapping.deptName;
+        const protocol = source?.protocol || (isLegacy ? 'SOAP_XML' : 'REST');
 
         provenanceRecords.push({
           field,
-          provider: mapping.provider,
-          providerName: mapping.deptName,
+          provider: providerId as any,
+          providerId,
+          providerName,
+          protocol,
           status,
           verifiedAt
         });
